@@ -1,0 +1,18 @@
+# Logs and build artefacts
+logs
+*.log
+npm-debug.log*
+node_modules
+dist
+public
+*.local
+
+# Editor directories and files
+.nova
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?

@@ -1,0 +1,8 @@
+dist/
+public/
+src/client/public/
+doc/
+node_modules/
+.cache/
+.vscode/
+.nova/

@@ -1,0 +1,31 @@
+{
+  "compilerOptions": {
+    "target": "es2020",
+    "useDefineForClassFields": true,
+    "module": "preserve",
+    "lib": ["es2020", "DOM", "DOM.Iterable"],
+    "skipLibCheck": true,
+    "noErrorTruncation": true,
+
+    "erasableSyntaxOnly": true,
+    "moduleDetection": "force",
+    "moduleResolution": "Bundler",
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "jsx": "preserve",
+    "jsxImportSource": "preact",
+    "jsxFactory": "h",
+    "jsxFragmentFactory": "Fragment",
+
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noUncheckedIndexedAccess": true,
+    "noFallthroughCasesInSwitch": true,
+    "verbatimModuleSyntax": true
+  },
+  "include": ["src", "lib"],
+  "references": [{ "path": "./tsconfig.node.json" }]
+}
