@@ -4,9 +4,10 @@
     "outDir": "./dist",
     "sourceMap": true,
     "declaration": true,
-    "allowImportingTsExtensions": false
+    "allowImportingTsExtensions": false,
+    "rootDir": "./lib",
   },
   "include": ["lib"],
   "exclude": ["**/*.test.ts", "**/*.test.tsx"],
-  "extends": "./tsconfig.json"
+  "extends": "./tsconfig.json",
 }
