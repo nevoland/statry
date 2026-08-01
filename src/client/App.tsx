@@ -1,5 +1,9 @@
-import type { StateMachine } from "#lib";
-import { StateMachineRuntime } from "../..//lib/classes/StateMachineRuntime.js";
+import { timeout } from "futurise";
+import {
+  ENTER,
+  type StateMachine,
+  StateMachineRuntime,
+} from "../../lib/main.js";
 import { Server } from "./components.js";
 
 const STATE_MACHINE = {
@@ -11,34 +15,21 @@ const STATE_MACHINE = {
     },
   },
   drag: {
-    mouseup(event, _state, context) {
+    [ENTER]: (event) =>
+      timeout(3000, () => event.target.send({ type: "mouseup" })),
+    mouseup() {
       return {
         type: "idle",
       };
     },
   },
-} satisfies StateMachine<
+} as const satisfies StateMachine<
   { type: "idle" } | { type: "drag" },
   { type: "mousedown" } | { type: "mouseup" },
-  any
+  never
 >;
 
 const fsm = new StateMachineRuntime(STATE_MACHINE, { type: "idle" });
-
-/*
-
-Argument of type '{ idle: { mousedown(event: { type: "mousedown"; }, state: { type: "idle"; }): { type: "drag"; }; }; drag: { mouseup(event: { type: "mouseup"; }, _state: { type: "drag"; }, context: any): { type: "idle"; }; }; }' is not assignable to parameter of type '{ [x: string]: { [ENTER]?: ((event: RuntimeEvent<{ type: string; }, { type: "mousedown"; }, any>, state: { type: string; }, context: any, dispatchEvent: (event: { type: "mousedown"; }) => void) => void | CleanupCallback<{ type: string; }, string, any>) | undefined; } & { mousedown?: ((event: { type: "mousedown"; }, state: { type: string; }, context: any) => { type: string; }) | undefined; }; }'.
-  Property 'idle' is incompatible with index signature.
-    Type '{ mousedown(event: { type: "mousedown"; }, state: { type: "idle"; }): { type: "drag"; }; }' is not assignable to type '{ [ENTER]?: ((event: RuntimeEvent<{ type: string; }, { type: "mousedown"; }, any>, state: { type: string; }, context: any, dispatchEvent: (event: { type: "mousedown"; }) => void) => void | CleanupCallback<{ type: string; }, string, any>) | undefined; } & { mousedown?: ((event: { type: "mousedown"; }, state: { type: string; }, context: any) => { type: string; }) | undefined; }'.
-      Type '{ mousedown(event: { type: "mousedown"; }, state: { type: "idle"; }): { type: "drag"; }; }' is not assignable to type '{ mousedown?: ((event: { type: "mousedown"; }, state: { type: string; }, context: any) => { type: string; }) | undefined; }'.
-        Types of property 'mousedown' are incompatible.
-          Type '(event: { type: "mousedown"; }, state: { type: "idle"; }) => { type: "drag"; }' is not assignable to type '(event: { type: "mousedown"; }, state: { type: string; }, context: any) => { type: string; }'.
-            Types of parameters 'state' and 'state' are incompatible.
-              Type '{ type: string; }' is not assignable to type '{ type: "idle"; }'.
-                Types of property 'type' are incompatible.
-                  Type 'string' is not assignable to type '"idle"'.
-
-*/
 
 export function App() {
   // useMemo(() => {

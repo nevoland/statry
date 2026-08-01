@@ -1,25 +1,30 @@
-import type { State } from "./State";
-import type { Event } from "./Event";
+import type { StateMachineRuntime } from "../classes/StateMachineRuntime";
 
-export type RuntimeTarget<S extends State, E extends Event, Context> = {
-  readonly state: S;
-  context: Context | undefined;
-  dispatchEvent: (event: E) => void;
-};
+import type { StateMachine } from "./StateMachine";
+import type { StateMachineEvent } from "./StateMachineEvent";
+import type { StateMachineState } from "./StateMachineState";
 
-export type RuntimeEvent<S extends State, E extends Event, Context> =
+export type RuntimeEvent<M extends StateMachine<any, any, any>> =
   | {
-      type: "statetransition" | "selftransition";
-      state: S;
-      target: RuntimeTarget<S, E, Context>;
-      trigger: E;
+      type: "statetransition";
+      state: StateMachineState<M>;
+      target: StateMachineRuntime<M>;
+      trigger: StateMachineEvent<M>;
       timeStamp: number;
-      previousState: S;
+      previousState: StateMachineState<M>;
+    }
+  | {
+      type: "selftransition";
+      state: StateMachineState<M>;
+      target: StateMachineRuntime<M>;
+      trigger: StateMachineEvent<M>;
+      timeStamp: number;
+      previousState: StateMachineState<M>;
     }
   | {
       type: "ignoredevent";
-      state: S;
-      target: RuntimeTarget<S, E, Context>;
-      trigger: E;
+      state: StateMachineState<M>;
+      target: StateMachineRuntime<M>;
+      trigger: StateMachineEvent<M>;
       timeStamp: number;
     };

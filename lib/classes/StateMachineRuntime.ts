@@ -1,121 +1,77 @@
-import { ENTER } from "../constants/ENTER";
+import { TypedEventEmitter } from "futurise";
+
 import type {
+  CleanupCallback,
+  Event,
+  RuntimeEvent,
+  State,
+  StateMachine,
   StateMachineContext,
   StateMachineEvent,
   StateMachineState,
-  RuntimeEventListener,
-  CleanupCallback,
-  RuntimeEventType,
-  RuntimeEvent,
 } from "../types";
+import { ENTER } from "../constants/ENTER";
 
-type RuntimeStateMachine = Record<string, Record<PropertyKey, unknown>>;
+export class StateMachineRuntime<
+  M extends StateMachine<State, Event, any>,
+> extends TypedEventEmitter<RuntimeEvent<M>> {
+  #stateMachine: M;
+  #state: StateMachineState<M>;
 
-type RuntimeState<Map extends RuntimeStateMachine> = StateMachineState<Map>;
-type RuntimeEventTrigger<Map extends RuntimeStateMachine> =
-  StateMachineEvent<Map>;
-type RuntimeContext<Map extends RuntimeStateMachine> = StateMachineContext<Map>;
+  context: StateMachineContext<M> | undefined;
 
-type RuntimeStateMachineEvent<Map extends RuntimeStateMachine> = RuntimeEvent<
-  RuntimeState<Map>,
-  RuntimeEventTrigger<Map>,
-  RuntimeContext<Map>
->;
-
-export class StateMachineRuntime<Map extends RuntimeStateMachine> {
-  #stateMachine: Map;
-  #state: RuntimeState<Map>;
-
-  context: RuntimeContext<Map> | undefined;
-
-  #listeners?: Partial<
-    Record<
-      RuntimeEventType,
-      RuntimeEventListener<
-        RuntimeState<Map>,
-        RuntimeEventTrigger<Map>,
-        RuntimeContext<Map>
-      >[]
-    >
-  >;
   #cleanup?: CleanupCallback<
-    RuntimeState<Map>,
-    RuntimeEventTrigger<Map>,
-    RuntimeContext<Map>
+    StateMachineState<M>,
+    StateMachineEvent<M>,
+    StateMachineContext<M>
   >;
 
   constructor(
-    stateMachine: Map,
-    initialState: RuntimeState<Map>,
-    context?: RuntimeContext<Map>,
+    stateMachine: M,
+    initialState: StateMachineState<M>,
+    context?: StateMachineContext<M>,
   ) {
+    super();
     this.#stateMachine = stateMachine;
     this.#state = initialState;
     this.context = context;
   }
 
-  get state() {
-    return this.#state;
-  }
-
-  dispatchEvent(event: RuntimeEventTrigger<Map>) {
+  send(event: StateMachineEvent<M>) {
     const stateMachine = this.#stateMachine;
-    const transitions = stateMachine[this.#state.type as keyof Map & string];
+    const transitions = stateMachine[this.#state.type as keyof M & string];
     const state = this.#state;
     const handler =
       transitions?.[event.type as keyof typeof transitions & string];
 
     if (handler == null) {
-      const listeners = this.#listeners?.["ignoredevent"];
-      const listenersLength = listeners?.length ?? 0;
-      if (listenersLength === 0) {
+      if (this.hasListeners("ignoredevent")) {
         return;
       }
-      const stateMachineEvent: RuntimeStateMachineEvent<Map> = {
-        state,
+      this.dispatchEvent({
         type: "ignoredevent",
+        state,
         trigger: event,
         target: this,
         timeStamp: Date.now(),
-      };
-      for (let i = 0; i < listenersLength; i++) {
-        listeners![i]!(stateMachineEvent);
-      }
+      });
       return;
     }
 
-    const context = this.context as RuntimeContext<Map>;
-    const nextState =
-      (
-        handler as (
-          event: RuntimeEventTrigger<Map>,
-          state: RuntimeState<Map>,
-          context: RuntimeContext<Map>,
-        ) => RuntimeState<Map>
-      )(event, state, context) ?? state;
+    const { context } = this;
+    const nextState = handler(event, state, context!) ?? state;
 
     if (nextState.type !== state.type) {
       const cleanup = this.#cleanup;
-      const onEnterState = stateMachine[nextState.type as keyof Map & string]?.[
-        ENTER
-      ] as
-        | ((
-            event: RuntimeStateMachineEvent<Map>,
-            state: RuntimeState<Map>,
-            context: RuntimeContext<Map>,
-            dispatchEvent: (event: RuntimeEventTrigger<Map>) => void,
-          ) => CleanupCallback<
-            RuntimeState<Map>,
-            RuntimeEventTrigger<Map>,
-            RuntimeContext<Map>
-          > | void)
-        | undefined;
-      const listeners = this.#listeners?.["statetransition"];
-      const listenersLength = listeners?.length ?? 0;
-      if (cleanup != null || onEnterState != null || listenersLength > 0) {
-        const stateMachineEvent: RuntimeStateMachineEvent<Map> = {
-          state: nextState,
+      const enter = stateMachine[nextState.type as keyof M & string]?.[ENTER];
+      if (
+        cleanup != null ||
+        enter != null ||
+        this.hasListeners("statetransition")
+      ) {
+        const stateMachineEvent: RuntimeEvent<M> = {
           type: "statetransition",
+          state: nextState,
           trigger: event,
           target: this,
           timeStamp: Date.now(),
@@ -124,17 +80,14 @@ export class StateMachineRuntime<Map extends RuntimeStateMachine> {
 
         cleanup?.(stateMachineEvent, nextState, context);
         this.#cleanup =
-          onEnterState?.(
+          enter?.(
             stateMachineEvent,
             nextState,
             context,
-            (nextEvent: RuntimeEventTrigger<Map>) =>
-              this.dispatchEvent(nextEvent),
+            (nextEvent: StateMachineEvent<M>) => this.send(nextEvent),
           ) ?? undefined;
 
-        for (let i = 0; i < listenersLength; i++) {
-          listeners![i]!(stateMachineEvent);
-        }
+        this.dispatchEvent(stateMachineEvent);
       } else {
         this.#cleanup = undefined;
       }
@@ -146,63 +99,20 @@ export class StateMachineRuntime<Map extends RuntimeStateMachine> {
       this.#state = nextState;
     }
 
-    const listeners = this.#listeners?.["selftransition"];
-    const listenersLength = listeners?.length ?? 0;
-    if (listenersLength === 0) {
+    if (!this.hasListeners("selftransition")) {
       return;
     }
-    const stateMachineEvent: RuntimeStateMachineEvent<Map> = {
-      state: nextState,
+    this.dispatchEvent({
       type: "selftransition",
+      state: nextState,
       trigger: event,
       target: this,
       timeStamp: Date.now(),
       previousState: state,
-    };
-    for (let i = 0; i < listenersLength; i++) {
-      listeners![i]!(stateMachineEvent);
-    }
+    });
   }
 
-  addEventListener(
-    eventType: RuntimeEventType,
-    listener: RuntimeEventListener<
-      RuntimeState<Map>,
-      RuntimeEventTrigger<Map>,
-      RuntimeContext<Map>
-    > | null,
-  ) {
-    if (listener == null) {
-      return;
-    }
-    if (this.#listeners == null) {
-      this.#listeners = {};
-    }
-    if (!(eventType in this.#listeners)) {
-      this.#listeners[eventType] = [];
-    }
-    this.#listeners[eventType]?.push(listener);
-  }
-
-  removeEventListener(
-    eventType: RuntimeEventType,
-    listener: RuntimeEventListener<
-      RuntimeState<Map>,
-      RuntimeEventTrigger<Map>,
-      RuntimeContext<Map>
-    >,
-  ) {
-    if (this.#listeners == null) {
-      return;
-    }
-    if (!(eventType in this.#listeners)) {
-      return;
-    }
-    const listeners = this.#listeners[eventType]!;
-    const index = listeners.indexOf(listener);
-    if (index === -1) {
-      return;
-    }
-    listeners.splice(index, 1);
+  get state() {
+    return this.#state;
   }
 }

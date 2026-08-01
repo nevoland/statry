@@ -1,8 +1,10 @@
-import type { ENTER } from "../constants/ENTER";
+import type { StateMachineRuntime } from "../classes/StateMachineRuntime.js";
+import type { ENTER } from "../constants/ENTER.js";
 
 import type { CleanupCallback } from "./CleanupCallback";
 import type { Event } from "./Event";
 import type { RuntimeEvent } from "./RuntimeEvent";
+import type { RuntimeEventStateTransition } from "./RuntimeEventStateTransition";
 import type { State } from "./State";
 
 /**
@@ -12,40 +14,23 @@ import type { State } from "./State";
  * @param E - The event type.
  * @param Context - The context type.
  */
-export type StateMachine<S extends State, E extends Event, Context> = [
-  0,
-  0,
-  0,
-] extends [1 & S, 1 & E, 1 & Context]
-  ? {
-      [SType in string]: {
-        [ENTER]?: (
-          event: RuntimeEvent<S, E, Context>,
-          state: Extract<S, { type: SType }>,
-          context: Context,
-          dispatchEvent: (event: E) => void,
-        ) => CleanupCallback<S, E, Context> | void;
-      } & {
-        [EType in string]: (
-          event: Extract<E, { type: EType }>,
-          state: Extract<S, { type: SType }>,
-          context: Context,
-        ) => S;
-      };
-    }
-  : {
-      [SType in S["type"]]: {
-        [ENTER]?: (
-          event: RuntimeEvent<S, E, Context>,
-          state: Extract<S, { type: SType }>,
-          context: Context,
-          dispatchEvent: (event: E) => void,
-        ) => CleanupCallback<S, E, Context> | void;
-      } & {
-        [EType in E["type"]]?: (
-          event: Extract<E, { type: EType }>,
-          state: Extract<S, { type: SType }>,
-          context: Context,
-        ) => S;
-      };
-    };
+export type StateMachine<S extends State, E extends Event, Context> = {
+  [SType in S["type"]]: {
+    [ENTER]?: (
+      event: RuntimeEventStateTransition<
+        Extract<S, { type: SType }>,
+        StateMachineRuntime<StateMachine<any, any, any>>,
+        E,
+        Context
+      >,
+      state: Extract<S, { type: SType }>,
+      context: Context,
+    ) => CleanupCallback<S, E, Context> | void;
+  } & {
+    [EType in E["type"]]?: (
+      event: Extract<E, { type: EType }>,
+      state: Extract<S, { type: SType }>,
+      context: Context,
+    ) => S;
+  };
+};
