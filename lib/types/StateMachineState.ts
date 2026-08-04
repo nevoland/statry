@@ -1,6 +1,21 @@
-import type { StateMachine } from "./StateMachine";
+type StateMachineLike = Record<string, Record<PropertyKey, unknown>>;
 
-export type StateMachineState<M extends StateMachine<any, any, any>> =
-  M extends StateMachine<infer S extends { type: string }, any, any>
-    ? S
-    : never;
+type StateMachineStateFromNode<Node, StateType extends string> =
+  | { type: StateType }
+  | {
+      [EventType in keyof Node & string]: NonNullable<
+        Node[EventType]
+      > extends (...args: any[]) => infer NextState
+        ? NextState
+        : never;
+    }[keyof Node & string];
+
+export type StateMachineState<M extends StateMachineLike> = Extract<
+  {
+    [StateType in keyof M & string]: StateMachineStateFromNode<
+      M[StateType],
+      StateType
+    >;
+  }[keyof M & string],
+  { type: string }
+>;

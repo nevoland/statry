@@ -2,10 +2,7 @@ import { TypedEventEmitter } from "futurise";
 
 import type {
   CleanupCallback,
-  Event,
   RuntimeEvent,
-  State,
-  StateMachine,
   StateMachineContext,
   StateMachineEvent,
   StateMachineState,
@@ -13,7 +10,7 @@ import type {
 import { ENTER } from "../constants/ENTER";
 
 export class StateMachineRuntime<
-  M extends StateMachine<State, Event, any>,
+  M extends Record<string, Record<PropertyKey, unknown>>,
 > extends TypedEventEmitter<RuntimeEvent<M>> {
   #stateMachine: M;
   #state: StateMachineState<M>;
@@ -41,8 +38,15 @@ export class StateMachineRuntime<
     const stateMachine = this.#stateMachine;
     const transitions = stateMachine[this.#state.type as keyof M & string];
     const state = this.#state;
-    const handler =
-      transitions?.[event.type as keyof typeof transitions & string];
+    const handler = transitions?.[
+      event.type as keyof typeof transitions & string
+    ] as
+      | ((
+          event: StateMachineEvent<M>,
+          state: StateMachineState<M>,
+          context: StateMachineContext<M>,
+        ) => StateMachineState<M> | void)
+      | undefined;
 
     if (handler == null) {
       if (this.hasListeners("ignoredevent")) {
@@ -58,25 +62,38 @@ export class StateMachineRuntime<
       return;
     }
 
-    const { context } = this;
-    const nextState = handler(event, state, context!) ?? state;
+    const context = this.context as StateMachineContext<M>;
+    const nextState = handler(event, state, context) ?? state;
 
     if (nextState.type !== state.type) {
       const cleanup = this.#cleanup;
-      const enter = stateMachine[nextState.type as keyof M & string]?.[ENTER];
+      const enter = stateMachine[nextState.type as keyof M & string]?.[
+        ENTER
+      ] as
+        | ((
+            event: Extract<RuntimeEvent<M>, { type: "statetransition" }>,
+            state: StateMachineState<M>,
+            context: StateMachineContext<M>,
+            send: (event: StateMachineEvent<M>) => void,
+          ) => CleanupCallback<
+            StateMachineState<M>,
+            StateMachineEvent<M>,
+            StateMachineContext<M>
+          > | void)
+        | undefined;
       if (
         cleanup != null ||
         enter != null ||
         this.hasListeners("statetransition")
       ) {
-        const stateMachineEvent: RuntimeEvent<M> = {
+        const stateMachineEvent = {
           type: "statetransition",
           state: nextState,
           trigger: event,
           target: this,
           timeStamp: Date.now(),
           previousState: state,
-        };
+        } satisfies Extract<RuntimeEvent<M>, { type: "statetransition" }>;
 
         cleanup?.(stateMachineEvent, nextState, context);
         this.#cleanup =
@@ -112,6 +129,9 @@ export class StateMachineRuntime<
     });
   }
 
+  /**
+   * The current state of the state machine runtime.
+   */
   get state() {
     return this.#state;
   }

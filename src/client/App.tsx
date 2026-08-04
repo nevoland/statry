@@ -1,4 +1,4 @@
-import { timeout } from "futurise";
+import { on, timeout } from "futurise";
 import {
   ENTER,
   type StateMachine,
@@ -30,6 +30,10 @@ const STATE_MACHINE = {
 >;
 
 const fsm = new StateMachineRuntime(STATE_MACHINE, { type: "idle" });
+
+on(fsm, "statetransition", (event) => {
+  event.target.send({ type: "mousedown" });
+});
 
 export function App() {
   // useMemo(() => {

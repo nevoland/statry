@@ -1,11 +1,13 @@
-import type { StateMachineRuntime } from "../classes/StateMachineRuntime.js";
 import type { ENTER } from "../constants/ENTER.js";
 
 import type { CleanupCallback } from "./CleanupCallback";
 import type { Event } from "./Event";
-import type { RuntimeEvent } from "./RuntimeEvent";
 import type { RuntimeEventStateTransition } from "./RuntimeEventStateTransition";
 import type { State } from "./State";
+
+type StateMachineRuntimeTarget<E extends Event> = {
+  send(event: E): void;
+};
 
 /**
  * Mapping of state transitions to their corresponding events.
@@ -19,12 +21,13 @@ export type StateMachine<S extends State, E extends Event, Context> = {
     [ENTER]?: (
       event: RuntimeEventStateTransition<
         Extract<S, { type: SType }>,
-        StateMachineRuntime<StateMachine<any, any, any>>,
+        StateMachineRuntimeTarget<E>,
         E,
-        Context
+        S
       >,
       state: Extract<S, { type: SType }>,
       context: Context,
+      send: (event: E) => void,
     ) => CleanupCallback<S, E, Context> | void;
   } & {
     [EType in E["type"]]?: (

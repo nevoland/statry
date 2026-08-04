@@ -1,10 +1,11 @@
 import type { StateMachineRuntime } from "../classes/StateMachineRuntime";
 
-import type { StateMachine } from "./StateMachine";
 import type { StateMachineEvent } from "./StateMachineEvent";
 import type { StateMachineState } from "./StateMachineState";
 
-export type RuntimeEvent<M extends StateMachine<any, any, any>> =
+type StateMachineLike = Record<string, Record<PropertyKey, unknown>>;
+
+export type RuntimeEvent<M extends StateMachineLike> =
   | {
       type: "statetransition";
       state: StateMachineState<M>;

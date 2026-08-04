@@ -1,17 +1,21 @@
-import type { StateMachine } from "./StateMachine";
+type StateMachineLike = Record<string, Record<PropertyKey, unknown>>;
 
 type EventOfTransition<
-  M extends StateMachine<any, any, any>,
+  M extends StateMachineLike,
   S extends keyof M & string,
   E extends keyof M[S] & string,
 > =
-  NonNullable<M[S][E]> extends (event: infer Event, state: any) => any
+  NonNullable<M[S][E]> extends (
+    event: infer Event,
+    state: any,
+    ...args: any
+  ) => any
     ? Event extends { type: E }
       ? Event
       : never
     : never;
 
-export type StateMachineEvent<M extends StateMachine<any, any, any>> = {
+export type StateMachineEvent<M extends StateMachineLike> = {
   [S in keyof M & string]: {
     [E in keyof M[S] & string]: [EventOfTransition<M, S, E>] extends [never]
       ? { type: E }
