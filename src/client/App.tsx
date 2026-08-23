@@ -1,8 +1,8 @@
 import { on, timeout } from "futurise";
 import {
   ENTER,
-  type StateMachine,
-  StateMachineRuntime,
+  type StateMachineDefinition,
+  StateMachine,
 } from "../../lib/main.js";
 import { Server } from "./components.js";
 
@@ -23,13 +23,35 @@ const STATE_MACHINE = {
       };
     },
   },
-} as const satisfies StateMachine<
+} as const satisfies StateMachineDefinition<
   { type: "idle" } | { type: "drag" },
   { type: "mousedown" } | { type: "mouseup" },
   never
 >;
 
-const fsm = new StateMachineRuntime(STATE_MACHINE, { type: "idle" });
+const fsm = new StateMachine(STATE_MACHINE, { type: "idle" });
+
+const fsm2 = new StateMachine(
+  {
+    idle: {
+      mousedown(event, state) {
+        return {
+          type: "drag",
+        };
+      },
+    },
+    drag: {
+      [ENTER]: (event) =>
+        timeout(3000, () => event.target.send({ type: "mouseup" })),
+      mouseup() {
+        return {
+          type: "idle",
+        };
+      },
+    },
+  },
+  { type: "idle_bug" },
+);
 
 on(fsm, "statetransition", (event) => {
   event.target.send({ type: "mousedown" });

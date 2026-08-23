@@ -9,7 +9,7 @@ import type {
 } from "../types";
 import { ENTER } from "../constants/ENTER";
 
-export class StateMachineRuntime<
+export class StateMachine<
   M extends Record<string, Record<PropertyKey, unknown>>,
 > extends TypedEventEmitter<RuntimeEvent<M>> {
   #stateMachine: M;
@@ -130,7 +130,7 @@ export class StateMachineRuntime<
   }
 
   /**
-   * The current state of the state machine runtime.
+   * The current state of the state machine.
    */
   get state() {
     return this.#state;

@@ -1,4 +1,4 @@
-import type { StateMachineRuntime } from "../classes/StateMachineRuntime";
+import type { StateMachine } from "../classes/StateMachine";
 
 import type { StateMachineEvent } from "./StateMachineEvent";
 import type { StateMachineState } from "./StateMachineState";
@@ -9,7 +9,7 @@ export type RuntimeEvent<M extends StateMachineLike> =
   | {
       type: "statetransition";
       state: StateMachineState<M>;
-      target: StateMachineRuntime<M>;
+      target: StateMachine<M>;
       trigger: StateMachineEvent<M>;
       timeStamp: number;
       previousState: StateMachineState<M>;
@@ -17,7 +17,7 @@ export type RuntimeEvent<M extends StateMachineLike> =
   | {
       type: "selftransition";
       state: StateMachineState<M>;
-      target: StateMachineRuntime<M>;
+      target: StateMachine<M>;
       trigger: StateMachineEvent<M>;
       timeStamp: number;
       previousState: StateMachineState<M>;
@@ -25,7 +25,7 @@ export type RuntimeEvent<M extends StateMachineLike> =
   | {
       type: "ignoredevent";
       state: StateMachineState<M>;
-      target: StateMachineRuntime<M>;
+      target: StateMachine<M>;
       trigger: StateMachineEvent<M>;
       timeStamp: number;
     };

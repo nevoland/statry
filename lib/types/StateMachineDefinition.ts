@@ -5,7 +5,7 @@ import type { Event } from "./Event";
 import type { RuntimeEventStateTransition } from "./RuntimeEventStateTransition";
 import type { State } from "./State";
 
-type StateMachineRuntimeTarget<E extends Event> = {
+type StateMachineTarget<E extends Event> = {
   send(event: E): void;
 };
 
@@ -16,12 +16,16 @@ type StateMachineRuntimeTarget<E extends Event> = {
  * @param E - The event type.
  * @param Context - The context type.
  */
-export type StateMachine<S extends State, E extends Event, Context> = {
+export type StateMachineDefinition<
+  S extends State,
+  E extends Event,
+  Context,
+> = {
   [SType in S["type"]]: {
     [ENTER]?: (
       event: RuntimeEventStateTransition<
         Extract<S, { type: SType }>,
-        StateMachineRuntimeTarget<E>,
+        StateMachineTarget<E>,
         E,
         S
       >,
