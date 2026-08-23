@@ -1,3 +1,5 @@
 import type { RuntimeEvent } from "./RuntimeEvent";
 
-export type RuntimeEventType = RuntimeEvent<any, any, any>["type"];
+type StateMachineLike = Record<string, Record<PropertyKey, unknown>>;
+
+export type RuntimeEventType = RuntimeEvent<StateMachineLike>["type"];

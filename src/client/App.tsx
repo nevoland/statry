@@ -49,8 +49,38 @@ const fsm2 = new StateMachine(
         };
       },
     },
+  } satisfies StateMachineDefinition<
+    { type: "idle" } | { type: "drag" },
+    { type: "mousedown" } | { type: "mouseup" },
+    never
+  >,
+  { type: "idle" },
+);
+
+const fsm3 = new StateMachine<
+  { type: "idle" } | { type: "drag" },
+  { type: "mousedown" } | { type: "mouseup" },
+  never
+>(
+  {
+    idle: {
+      mousedown(event, state) {
+        return {
+          type: "drag",
+        };
+      },
+    },
+    drag: {
+      [ENTER]: (event) =>
+        timeout(3000, () => event.target.send({ type: "mouseup" })),
+      mouseup() {
+        return {
+          type: "idle",
+        };
+      },
+    },
   },
-  { type: "idle_bug" },
+  { type: "idle" },
 );
 
 on(fsm, "statetransition", (event) => {

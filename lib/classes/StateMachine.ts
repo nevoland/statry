@@ -1,27 +1,30 @@
 import { TypedEventEmitter } from "futurise";
 
 import type {
-  CleanupCallback,
+  Event,
   RuntimeEvent,
+  State,
+  StateMachineDefinition,
   StateMachineContext,
   StateMachineEvent,
   StateMachineState,
 } from "../types";
 import { ENTER } from "../constants/ENTER";
 
+type StateMachineLike = Record<string, Record<PropertyKey, unknown>>;
+
 export class StateMachine<
-  M extends Record<string, Record<PropertyKey, unknown>>,
+  S extends State = State,
+  E extends Event = Event,
+  Context = unknown,
+  M extends StateMachineLike = StateMachineDefinition<S, E, Context>,
 > extends TypedEventEmitter<RuntimeEvent<M>> {
   #stateMachine: M;
   #state: StateMachineState<M>;
 
   context: StateMachineContext<M> | undefined;
 
-  #cleanup?: CleanupCallback<
-    StateMachineState<M>,
-    StateMachineEvent<M>,
-    StateMachineContext<M>
-  >;
+  #cleanup?: StateMachineCleanup<M>;
 
   constructor(
     stateMachine: M,
@@ -36,7 +39,8 @@ export class StateMachine<
 
   send(event: StateMachineEvent<M>) {
     const stateMachine = this.#stateMachine;
-    const transitions = stateMachine[this.#state.type as keyof M & string];
+    const transitions =
+      stateMachine[this.#state.type as keyof typeof stateMachine & string];
     const state = this.#state;
     const handler = transitions?.[
       event.type as keyof typeof transitions & string
@@ -67,19 +71,16 @@ export class StateMachine<
 
     if (nextState.type !== state.type) {
       const cleanup = this.#cleanup;
-      const enter = stateMachine[nextState.type as keyof M & string]?.[
-        ENTER
-      ] as
+      const enter = (
+        stateMachine[nextState.type as keyof typeof stateMachine & string] as
+          Record<PropertyKey, unknown> | undefined
+      )?.[ENTER] as
         | ((
             event: Extract<RuntimeEvent<M>, { type: "statetransition" }>,
             state: StateMachineState<M>,
             context: StateMachineContext<M>,
             send: (event: StateMachineEvent<M>) => void,
-          ) => CleanupCallback<
-            StateMachineState<M>,
-            StateMachineEvent<M>,
-            StateMachineContext<M>
-          > | void)
+          ) => StateMachineCleanup<M> | void)
         | undefined;
       if (
         cleanup != null ||
@@ -136,3 +137,9 @@ export class StateMachine<
     return this.#state;
   }
 }
+
+type StateMachineCleanup<M extends StateMachineLike> = (
+  event: RuntimeEvent<M>,
+  state: StateMachineState<M>,
+  context: StateMachineContext<M>,
+) => void;
