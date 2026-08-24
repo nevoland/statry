@@ -13,6 +13,14 @@ import { ENTER } from "../constants/ENTER";
 
 type StateMachineLike = Record<string, Record<PropertyKey, unknown>>;
 
+/**
+ * A state machine is a computational model that represents a system with a finite number of states and transitions between those states.
+ * The `StateMachine` class provides a way to define and manage state machines in TypeScript, allowing for the handling of events, state transitions, and context management.
+ *
+ * @template S - The type of the states in the state machine.
+ * @template E - The type of the events that can trigger state transitions.
+ * @template Context - The type of the context object that can be used to store additional data relevant to the state machine's operation.
+ */
 export class StateMachine<
   S extends State = State,
   E extends Event = Event,
@@ -22,8 +30,14 @@ export class StateMachine<
   #stateMachine: M;
   #state: StateMachineState<M>;
 
+  /**
+   * The context of the state machine, which can be used to store additional data that is relevant to the state machine's operation. The context is passed to the event handlers of the state machine, and can be used to maintain state across transitions.
+   */
   context: StateMachineContext<M> | undefined;
 
+  /**
+   * A cleanup function that is called when the state machine transitions to a new state. This function is returned by the `ENTER` handler of the current state, and is called with the event that triggered the transition, the new state, and the context of the state machine.
+   */
   #cleanup?: StateMachineCleanup<M>;
 
   constructor(
