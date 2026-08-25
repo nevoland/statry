@@ -8,7 +8,7 @@
 
 > **StateMachineState**\<`M`\> = `Extract`\<`{ [StateType in keyof M & string]: StateMachineStateFromNode<M[StateType], StateType> }`\[keyof `M` & `string`\], \{ `type`: `string`; \}\>
 
-Defined in: [types/StateMachineState.ts:13](https://github.com/nevoland/statry/blob/80189247c33ace13d4602eef9be60be7d4209b35/lib/types/StateMachineState.ts#L13)
+Defined in: [types/StateMachineState.ts:13](https://github.com/nevoland/statry/blob/26fbc7e280c5d9550693cfbd8d7e0c5c0a5b976e/lib/types/StateMachineState.ts#L13)
 
 ## Type Parameters
 
