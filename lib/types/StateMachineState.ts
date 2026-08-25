@@ -3,9 +3,9 @@ type StateMachineLike = Record<string, Record<PropertyKey, unknown>>;
 type StateMachineStateFromNode<Node, StateType extends string> =
   | { type: StateType }
   | {
-      [EventType in keyof Node & string]: NonNullable<
-        Node[EventType]
-      > extends (...args: any[]) => infer NextState
+      [EventType in keyof Node & string]: NonNullable<Node[EventType]> extends (
+        ...args: any[]
+      ) => infer NextState
         ? NextState
         : never;
     }[keyof Node & string];

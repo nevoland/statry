@@ -5,9 +5,9 @@
     "sourceMap": true,
     "declaration": true,
     "allowImportingTsExtensions": false,
-    "rootDir": "./lib",
+    "rootDir": "./lib"
   },
   "include": ["lib"],
   "exclude": ["**/*.test.ts", "**/*.test.tsx"],
-  "extends": "./tsconfig.json",
+  "extends": "./tsconfig.json"
 }
