@@ -1,48 +1,27 @@
-statra
+**statra**
+
+***
 
 # statra
 
-## Table of contents
+## Classes
 
-### Type Aliases
-
-- [Any](README.md#any)
-
-### Functions
-
-- [add](README.md#add)
+- [StateMachine](classes/StateMachine.md)
 
 ## Type Aliases
 
-### Any
+- [CleanupCallback](type-aliases/CleanupCallback.md)
+- [Event](type-aliases/Event.md)
+- [RuntimeEvent](type-aliases/RuntimeEvent.md)
+- [RuntimeEventListener](type-aliases/RuntimeEventListener.md)
+- [RuntimeEventStateTransition](type-aliases/RuntimeEventStateTransition.md)
+- [RuntimeEventType](type-aliases/RuntimeEventType.md)
+- [State](type-aliases/State.md)
+- [StateMachineContext](type-aliases/StateMachineContext.md)
+- [StateMachineDefinition](type-aliases/StateMachineDefinition.md)
+- [StateMachineEvent](type-aliases/StateMachineEvent.md)
+- [StateMachineState](type-aliases/StateMachineState.md)
 
-Ƭ **Any**: `boolean` \| `string` \| `number` \| `object` \| `symbol` \| ``null`` \| `undefined` \| `any`[] \| (...`args`: `any`[]) => `any`
+## Variables
 
-#### Defined in
-
-[types.ts:1](https://github.com/nevoland/statra/blob/4f05eb8/lib/types.ts#L1)
-
-## Functions
-
-### add
-
-▸ **add**(`a`, `b`): `number`
-
-Returns the sum of the two provided numbers.
-
-#### Parameters
-
-| Name | Type | Description |
-| :------ | :------ | :------ |
-| `a` | `number` | First number umber. |
-| `b` | `number` | Other number. |
-
-#### Returns
-
-`number`
-
-The sum of both numbers.
-
-#### Defined in
-
-[tools/add.ts:8](https://github.com/nevoland/statra/blob/4f05eb8/lib/tools/add.ts#L8)
+- [ENTER](variables/ENTER.md)
