@@ -93,7 +93,6 @@ export class StateMachine<
             event: Extract<RuntimeEvent<M>, { type: "statetransition" }>,
             state: StateMachineState<M>,
             context: StateMachineContext<M>,
-            send: (event: StateMachineEvent<M>) => void,
           ) => StateMachineCleanup<M> | void)
         | undefined;
       if (
@@ -112,12 +111,7 @@ export class StateMachine<
 
         cleanup?.(stateMachineEvent, nextState, context);
         this.#cleanup =
-          enter?.(
-            stateMachineEvent,
-            nextState,
-            context,
-            (nextEvent: StateMachineEvent<M>) => this.send(nextEvent),
-          ) ?? undefined;
+          enter?.(stateMachineEvent, nextState, context) ?? undefined;
 
         this.dispatchEvent(stateMachineEvent);
       } else {

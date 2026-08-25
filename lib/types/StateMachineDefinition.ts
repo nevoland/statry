@@ -31,7 +31,6 @@ export type StateMachineDefinition<
       >,
       state: Extract<S, { type: SType }>,
       context: Context,
-      send: (event: E) => void,
     ) => CleanupCallback<S, E, Context> | void;
   } & {
     [EType in E["type"]]?: (
