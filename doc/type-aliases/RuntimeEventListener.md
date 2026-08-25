@@ -8,7 +8,7 @@
 
 > **RuntimeEventListener**\<`S`, `E`, `Context`\> = (`event`) => `void`
 
-Defined in: [types/RuntimeEventListener.ts:6](https://github.com/nevoland/statry/blob/759112c9274556ca461526f9b5d90ca3ca2168d5/lib/types/RuntimeEventListener.ts#L6)
+Defined in: [types/RuntimeEventListener.ts:6](https://github.com/nevoland/statry/blob/80189247c33ace13d4602eef9be60be7d4209b35/lib/types/RuntimeEventListener.ts#L6)
 
 ## Type Parameters
 

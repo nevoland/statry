@@ -8,7 +8,7 @@
 
 > **StateMachineContext**\<`M`\> = `{ [StateType in keyof M & string]: ContextFromNode<M[StateType]> }`\[keyof `M` & `string`\]
 
-Defined in: [types/StateMachineContext.ts:24](https://github.com/nevoland/statry/blob/759112c9274556ca461526f9b5d90ca3ca2168d5/lib/types/StateMachineContext.ts#L24)
+Defined in: [types/StateMachineContext.ts:24](https://github.com/nevoland/statry/blob/80189247c33ace13d4602eef9be60be7d4209b35/lib/types/StateMachineContext.ts#L24)
 
 ## Type Parameters
 
