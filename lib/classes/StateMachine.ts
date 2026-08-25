@@ -81,7 +81,7 @@ export class StateMachine<
       | undefined;
 
     if (handler == null) {
-      if (this.hasListeners("ignoredevent")) {
+      if (!this.hasListeners("ignoredevent")) {
         return;
       }
       this.dispatchEvent({
