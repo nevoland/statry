@@ -1,25 +1,27 @@
 import { on, timeout } from "futurise";
+
 import {
   ENTER,
-  type StateMachineDefinition,
   StateMachine,
+  type StateMachineDefinition,
 } from "../../lib/main.js";
+
 import { Server } from "./components.js";
 
 const STATE_MACHINE = {
-  idle: {
-    mousedown(event, state) {
-      return {
-        type: "drag",
-      };
-    },
-  },
   drag: {
     [ENTER]: (event) =>
       timeout(3000, () => event.target.send({ type: "mouseup" })),
     mouseup() {
       return {
         type: "idle",
+      };
+    },
+  },
+  idle: {
+    mousedown(event, state) {
+      return {
+        type: "drag",
       };
     },
   },
@@ -33,19 +35,19 @@ const fsm = new StateMachine(STATE_MACHINE, { type: "idle" });
 
 const fsm2 = new StateMachine(
   {
-    idle: {
-      mousedown(event, state) {
-        return {
-          type: "drag",
-        };
-      },
-    },
     drag: {
       [ENTER]: (event) =>
         timeout(3000, () => event.target.send({ type: "mouseup" })),
       mouseup() {
         return {
           type: "idle",
+        };
+      },
+    },
+    idle: {
+      mousedown(event, state) {
+        return {
+          type: "drag",
         };
       },
     },
@@ -63,19 +65,19 @@ const fsm3 = new StateMachine<
   never
 >(
   {
-    idle: {
-      mousedown(event, state) {
-        return {
-          type: "drag",
-        };
-      },
-    },
     drag: {
       [ENTER]: (event) =>
         timeout(3000, () => event.target.send({ type: "mouseup" })),
       mouseup() {
         return {
           type: "idle",
+        };
+      },
+    },
+    idle: {
+      mousedown(event, state) {
+        return {
+          type: "drag",
         };
       },
     },

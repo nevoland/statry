@@ -181,6 +181,9 @@ export default [
     },
     settings: {
       ...importPlugin.configs.typescript.settings,
+      tailwindcss: {
+        cssConfigPath: "./src/client/main.css",
+      },
     },
   },
   {

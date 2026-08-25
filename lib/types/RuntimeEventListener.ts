@@ -1,5 +1,5 @@
-import type { RuntimeEvent } from "./RuntimeEvent";
 import type { Event } from "./Event";
+import type { RuntimeEvent } from "./RuntimeEvent";
 import type { State } from "./State";
 import type { StateMachineDefinition } from "./StateMachineDefinition";
 

@@ -1,15 +1,15 @@
 import { TypedEventEmitter } from "futurise";
 
+import { ENTER } from "../constants/ENTER.js";
 import type {
   Event,
   RuntimeEvent,
   State,
-  StateMachineDefinition,
   StateMachineContext,
+  StateMachineDefinition,
   StateMachineEvent,
   StateMachineState,
 } from "../types";
-import { ENTER } from "../constants/ENTER";
 
 type StateMachineLike = Record<string, Record<PropertyKey, unknown>>;
 
@@ -71,11 +71,11 @@ export class StateMachine<
         return;
       }
       this.dispatchEvent({
-        type: "ignoredevent",
         state,
-        trigger: event,
         target: this,
         timeStamp: Date.now(),
+        trigger: event,
+        type: "ignoredevent",
       });
       return;
     }
@@ -102,12 +102,12 @@ export class StateMachine<
         this.hasListeners("statetransition")
       ) {
         const stateMachineEvent = {
-          type: "statetransition",
+          previousState: state,
           state: nextState,
-          trigger: event,
           target: this,
           timeStamp: Date.now(),
-          previousState: state,
+          trigger: event,
+          type: "statetransition",
         } satisfies Extract<RuntimeEvent<M>, { type: "statetransition" }>;
 
         cleanup?.(stateMachineEvent, nextState, context);
@@ -135,12 +135,12 @@ export class StateMachine<
       return;
     }
     this.dispatchEvent({
-      type: "selftransition",
+      previousState: state,
       state: nextState,
-      trigger: event,
       target: this,
       timeStamp: Date.now(),
-      previousState: state,
+      trigger: event,
+      type: "selftransition",
     });
   }
 

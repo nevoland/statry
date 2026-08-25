@@ -31,7 +31,7 @@
   },
   "scripts": {
     "with": "node --env-file=${npm_config_env:-.env.local} $(which npm)",
-    "dev": "node --env-file-if-exists=.env --env-file-if-exists=.env.local --env-file-if-exists=${ENV_PATH:-.env.local} --watch-path=src/server src/server/main.ts",
+    "dev": "node --env-file-if-exists=.env --env-file-if-exists=.env.local --env-file-if-exists=${ENV_PATH:-.env.local} src/server/main.ts",
     "start": "node --env-file-if-exists=.env --env-file-if-exists=${ENV_PATH:-.env} src/server/main.ts",
     "dev:test": "vitest --update --root=./",
     "test": "npm run lint && npm run format && vitest run --root=./",
@@ -57,6 +57,7 @@
     "@eslint/js": "^9.0.0",
     "@nevoland/get-global": "^2.1.0",
     "@preact/preset-vite": "^2.10.6",
+    "@tailwindcss/postcss": "^4.3.3",
     "@types/eslint": "^9.6.1",
     "@types/node": "^26.1.1",
     "@typescript-eslint/parser": "^8.65.0",

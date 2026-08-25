@@ -34,14 +34,6 @@ export default defineConfig({
         extension: "js",
         language: "ts",
       },
-      outputPath: resolve("lib/tools.ts"),
-      rootPath: resolve("lib/tools"),
-    }),
-    moduleList({
-      mode: {
-        extension: "js",
-        language: "ts",
-      },
       outputPath: resolve("lib/constants.ts"),
       rootPath: resolve("lib/constants"),
     }),
