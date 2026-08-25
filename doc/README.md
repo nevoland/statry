@@ -1,8 +1,8 @@
-**statra**
+**statry**
 
 ***
 
-# statra
+# statry
 
 ## Classes
 

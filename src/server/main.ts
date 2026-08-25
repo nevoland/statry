@@ -16,7 +16,7 @@ async function main(
 
   app.get("/setup", (_, response) => {
     response.json({
-      projectName: "Statra",
+      projectName: "Statry",
     });
   });
 

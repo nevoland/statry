@@ -1,10 +1,10 @@
-# Statra
+# Statry
 
 🔀 Type-safe state machine description and runtime library
 
 <!-- Delete start -->
 
-> To use this template, clone this repository and rename all "Statra" instances to the name of your library.
+> To use this template, clone this repository and rename all "Statry" instances to the name of your library.
 > Set this package to "public" before publishing it.
 
 ### Uses
@@ -38,15 +38,15 @@
 Everything is exported from the main entry-point through an ES6 module:
 
 ```js
-import { add } from "statra";
+import { add } from "statry";
 ```
 
 ### Installation
 
-Install with the [Node Package Manager](https://www.npmjs.com/package/statra):
+Install with the [Node Package Manager](https://www.npmjs.com/package/statry):
 
 ```bash
-npm install statra
+npm install statry
 ```
 
 ### Documentation

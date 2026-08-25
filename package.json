@@ -1,5 +1,5 @@
 {
-  "name": "statra",
+  "name": "statry",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -12,7 +12,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/nevoland/statra.git"
+    "url": "https://github.com/nevoland/statry.git"
   },
   "files": [
     "dist",
