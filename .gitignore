@@ -6,6 +6,7 @@ node_modules
 dist
 public
 *.local
+coverage
 
 # Editor directories and files
 .nova
