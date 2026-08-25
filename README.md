@@ -74,7 +74,7 @@ The three type parameters in `StateMachineDefinition<States, Events, Context>` d
 
 #### Auto-release with a timer
 
-To run work when a state is entered, define an `ENTER` handler. It receives the transition event, the new state, and the context. Use `event.target.send` to send events to the current state machine. If the handler returns a function, that function is called when the state is left, allowing timers and subscriptions to be cleaned up:
+To do work when a state is entered, define an `ENTER` handler. It receives the transition event, the new state, and the context. Use `event.target.send` to send events to the current state machine. If the handler returns a function, that function is called when the state is left, allowing timers and subscriptions to be cleaned up:
 
 ```ts
 const definition = {

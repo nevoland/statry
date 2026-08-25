@@ -28,6 +28,11 @@ export class StateMachine<
   M extends StateMachineLike = StateMachineDefinition<S, E, Context>,
 > extends TypedEventEmitter<RuntimeEvent<M>> {
   /**
+   * The context of the state machine, which can be used to store additional data that is relevant to the state machine's operation. The context is passed to the event handlers of the state machine, and can be used to maintain state across transitions.
+   */
+  context: StateMachineContext<M> | undefined;
+
+  /**
    * The definition of the state machine, which includes the states, events, and transitions that define the behavior of the state machine. This definition is used to determine how the state machine responds to events and transitions between states.
    */
   #definition: M;
@@ -36,11 +41,6 @@ export class StateMachine<
    * The current state of the state machine, which represents the state that the state machine is currently in.
    */
   #state: StateMachineState<M>;
-
-  /**
-   * The context of the state machine, which can be used to store additional data that is relevant to the state machine's operation. The context is passed to the event handlers of the state machine, and can be used to maintain state across transitions.
-   */
-  context: StateMachineContext<M> | undefined;
 
   /**
    * A cleanup function that is called when the state machine transitions to a new state. This function is returned by the `ENTER` handler of the current state, and is called with the event that triggered the transition, the new state, and the context of the state machine.
