@@ -27,7 +27,14 @@ export class StateMachine<
   Context = unknown,
   M extends StateMachineLike = StateMachineDefinition<S, E, Context>,
 > extends TypedEventEmitter<RuntimeEvent<M>> {
-  #stateMachine: M;
+  /**
+   * The definition of the state machine, which includes the states, events, and transitions that define the behavior of the state machine. This definition is used to determine how the state machine responds to events and transitions between states.
+   */
+  #definition: M;
+
+  /**
+   * The current state of the state machine, which represents the state that the state machine is currently in.
+   */
   #state: StateMachineState<M>;
 
   /**
@@ -40,19 +47,26 @@ export class StateMachine<
    */
   #cleanup?: StateMachineCleanup<M>;
 
+  /**
+   * Creates a new instance of the `StateMachine` class.
+   *
+   * @param definition - The definition of the state machine, which includes the states, events, and transitions that define the behavior of the state machine.
+   * @param initialState - The initial state of the state machine, which is the state that the state machine will be in when it is first created.
+   * @param context - An optional context object that can be used to configure the state machine's behavior.
+   */
   constructor(
-    stateMachine: M,
+    definition: M,
     initialState: StateMachineState<M>,
     context?: StateMachineContext<M>,
   ) {
     super();
-    this.#stateMachine = stateMachine;
+    this.#definition = definition;
     this.#state = initialState;
     this.context = context;
   }
 
   send(event: StateMachineEvent<M>) {
-    const stateMachine = this.#stateMachine;
+    const stateMachine = this.#definition;
     const transitions =
       stateMachine[this.#state.type as keyof typeof stateMachine & string];
     const state = this.#state;
@@ -143,6 +157,21 @@ export class StateMachine<
    */
   get state() {
     return this.#state;
+  }
+
+  /**
+   * The definition of the state machine, which includes the states, events, and transitions that define the behavior of the state machine.
+   */
+  get definition() {
+    return this.#definition;
+  }
+
+  /**
+   * Creates a new instance of the `StateMachine` class with the same definition, state, and context as the current instance.
+   * @returns A new `StateMachine` instance that is a clone of the current instance.
+   */
+  clone(): StateMachine<S, E, Context, M> {
+    return new StateMachine(this.#definition, this.#state, this.context);
   }
 }
 
