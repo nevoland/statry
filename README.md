@@ -25,7 +25,7 @@ import { ENTER, StateMachine, type StateMachineDefinition } from "statry";
 
 #### A minimal drag-and-drop
 
-The simplest definition is just states and their event handlers. Each handler returns the next state (or `void` to stay put):
+The simplest definition is just states and their event handlers. Each handler returns the next state:
 
 ```ts
 const DEFINITION = {
@@ -127,7 +127,7 @@ XState treats `after` as a first-class concept, while Statry expresses the same 
 
 #### Guards for conditional transitions
 
-A transition handler is just a function, so a guard is expressed by returning the current `state` (or `void`) when a condition fails. Here a locked door only unlocks when the correct code is passed with the event:
+A transition handler is just a function, so a guard is expressed by returning the current `state` when a condition fails. Here a locked door only unlocks when the correct code is passed with the event:
 
 ```ts
 type DoorState = { type: "locked" } | { type: "unlocked" } | { type: "open" };
