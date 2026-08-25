@@ -8,7 +8,7 @@
 
 > **RuntimeEventStateTransition**\<`S`, `MR`, `E`, `SPrevious`\> = `object`
 
-Defined in: [types/RuntimeEventStateTransition.ts:1](https://github.com/nevoland/statry/blob/3e77b23b999708af70ec7e60550ca5076ef79b03/lib/types/RuntimeEventStateTransition.ts#L1)
+Defined in: [types/RuntimeEventStateTransition.ts:1](https://github.com/nevoland/statry/blob/759112c9274556ca461526f9b5d90ca3ca2168d5/lib/types/RuntimeEventStateTransition.ts#L1)
 
 ## Type Parameters
 
@@ -34,7 +34,7 @@ Defined in: [types/RuntimeEventStateTransition.ts:1](https://github.com/nevoland
 
 > **previousState**: `SPrevious`
 
-Defined in: [types/RuntimeEventStateTransition.ts:7](https://github.com/nevoland/statry/blob/3e77b23b999708af70ec7e60550ca5076ef79b03/lib/types/RuntimeEventStateTransition.ts#L7)
+Defined in: [types/RuntimeEventStateTransition.ts:7](https://github.com/nevoland/statry/blob/759112c9274556ca461526f9b5d90ca3ca2168d5/lib/types/RuntimeEventStateTransition.ts#L7)
 
 ***
 
@@ -42,7 +42,7 @@ Defined in: [types/RuntimeEventStateTransition.ts:7](https://github.com/nevoland
 
 > **state**: `S`
 
-Defined in: [types/RuntimeEventStateTransition.ts:3](https://github.com/nevoland/statry/blob/3e77b23b999708af70ec7e60550ca5076ef79b03/lib/types/RuntimeEventStateTransition.ts#L3)
+Defined in: [types/RuntimeEventStateTransition.ts:3](https://github.com/nevoland/statry/blob/759112c9274556ca461526f9b5d90ca3ca2168d5/lib/types/RuntimeEventStateTransition.ts#L3)
 
 ***
 
@@ -50,7 +50,7 @@ Defined in: [types/RuntimeEventStateTransition.ts:3](https://github.com/nevoland
 
 > **target**: `MR`
 
-Defined in: [types/RuntimeEventStateTransition.ts:4](https://github.com/nevoland/statry/blob/3e77b23b999708af70ec7e60550ca5076ef79b03/lib/types/RuntimeEventStateTransition.ts#L4)
+Defined in: [types/RuntimeEventStateTransition.ts:4](https://github.com/nevoland/statry/blob/759112c9274556ca461526f9b5d90ca3ca2168d5/lib/types/RuntimeEventStateTransition.ts#L4)
 
 ***
 
@@ -58,7 +58,7 @@ Defined in: [types/RuntimeEventStateTransition.ts:4](https://github.com/nevoland
 
 > **timeStamp**: `number`
 
-Defined in: [types/RuntimeEventStateTransition.ts:6](https://github.com/nevoland/statry/blob/3e77b23b999708af70ec7e60550ca5076ef79b03/lib/types/RuntimeEventStateTransition.ts#L6)
+Defined in: [types/RuntimeEventStateTransition.ts:6](https://github.com/nevoland/statry/blob/759112c9274556ca461526f9b5d90ca3ca2168d5/lib/types/RuntimeEventStateTransition.ts#L6)
 
 ***
 
@@ -66,7 +66,7 @@ Defined in: [types/RuntimeEventStateTransition.ts:6](https://github.com/nevoland
 
 > **trigger**: `E`
 
-Defined in: [types/RuntimeEventStateTransition.ts:5](https://github.com/nevoland/statry/blob/3e77b23b999708af70ec7e60550ca5076ef79b03/lib/types/RuntimeEventStateTransition.ts#L5)
+Defined in: [types/RuntimeEventStateTransition.ts:5](https://github.com/nevoland/statry/blob/759112c9274556ca461526f9b5d90ca3ca2168d5/lib/types/RuntimeEventStateTransition.ts#L5)
 
 ***
 
@@ -74,4 +74,4 @@ Defined in: [types/RuntimeEventStateTransition.ts:5](https://github.com/nevoland
 
 > **type**: `"statetransition"`
 
-Defined in: [types/RuntimeEventStateTransition.ts:2](https://github.com/nevoland/statry/blob/3e77b23b999708af70ec7e60550ca5076ef79b03/lib/types/RuntimeEventStateTransition.ts#L2)
+Defined in: [types/RuntimeEventStateTransition.ts:2](https://github.com/nevoland/statry/blob/759112c9274556ca461526f9b5d90ca3ca2168d5/lib/types/RuntimeEventStateTransition.ts#L2)

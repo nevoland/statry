@@ -6,7 +6,7 @@
 
 # Class: StateMachine\<S, E, Context, M\>
 
-Defined in: [classes/StateMachine.ts:24](https://github.com/nevoland/statry/blob/3e77b23b999708af70ec7e60550ca5076ef79b03/lib/classes/StateMachine.ts#L24)
+Defined in: [classes/StateMachine.ts:24](https://github.com/nevoland/statry/blob/759112c9274556ca461526f9b5d90ca3ca2168d5/lib/classes/StateMachine.ts#L24)
 
 A state machine is a computational model that represents a system with a finite number of states and transitions between those states.
 The `StateMachine` class provides a way to define and manage state machines in TypeScript, allowing for the handling of events, state transitions, and context management.
@@ -45,7 +45,7 @@ The type of the context object that can be used to store additional data relevan
 
 > **new StateMachine**\<`S`, `E`, `Context`, `M`\>(`stateMachine`, `initialState`, `context?`): `StateMachine`\<`S`, `E`, `Context`, `M`\>
 
-Defined in: [classes/StateMachine.ts:43](https://github.com/nevoland/statry/blob/3e77b23b999708af70ec7e60550ca5076ef79b03/lib/classes/StateMachine.ts#L43)
+Defined in: [classes/StateMachine.ts:43](https://github.com/nevoland/statry/blob/759112c9274556ca461526f9b5d90ca3ca2168d5/lib/classes/StateMachine.ts#L43)
 
 #### Parameters
 
@@ -75,7 +75,7 @@ Defined in: [classes/StateMachine.ts:43](https://github.com/nevoland/statry/blob
 
 > **context**: [`StateMachineContext`](../type-aliases/StateMachineContext.md)\<`M`\> \| `undefined`
 
-Defined in: [classes/StateMachine.ts:36](https://github.com/nevoland/statry/blob/3e77b23b999708af70ec7e60550ca5076ef79b03/lib/classes/StateMachine.ts#L36)
+Defined in: [classes/StateMachine.ts:36](https://github.com/nevoland/statry/blob/759112c9274556ca461526f9b5d90ca3ca2168d5/lib/classes/StateMachine.ts#L36)
 
 The context of the state machine, which can be used to store additional data that is relevant to the state machine's operation. The context is passed to the event handlers of the state machine, and can be used to maintain state across transitions.
 
@@ -87,7 +87,7 @@ The context of the state machine, which can be used to store additional data tha
 
 > **get** **state**(): [`StateMachineState`](../type-aliases/StateMachineState.md)\<`M`\>
 
-Defined in: [classes/StateMachine.ts:150](https://github.com/nevoland/statry/blob/3e77b23b999708af70ec7e60550ca5076ef79b03/lib/classes/StateMachine.ts#L150)
+Defined in: [classes/StateMachine.ts:150](https://github.com/nevoland/statry/blob/759112c9274556ca461526f9b5d90ca3ca2168d5/lib/classes/StateMachine.ts#L150)
 
 The current state of the state machine.
 
@@ -101,7 +101,7 @@ The current state of the state machine.
 
 > **send**(`event`): `void`
 
-Defined in: [classes/StateMachine.ts:54](https://github.com/nevoland/statry/blob/3e77b23b999708af70ec7e60550ca5076ef79b03/lib/classes/StateMachine.ts#L54)
+Defined in: [classes/StateMachine.ts:54](https://github.com/nevoland/statry/blob/759112c9274556ca461526f9b5d90ca3ca2168d5/lib/classes/StateMachine.ts#L54)
 
 #### Parameters
 
