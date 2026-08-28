@@ -53,9 +53,18 @@ export class StateMachine<
     this.#definition = definition;
     this.#state = initialState;
     this.context = context;
+    this.send = (event: E) => this.#send(event);
   }
 
-  send(event: E) {
+  /**
+   * Sends an event to the state machine, triggering any matching transition defined for the
+   * current state. Bound to the instance so it can be passed as a callback.
+   *
+   * @param event - The event to dispatch.
+   */
+  send: (event: E) => void;
+
+  #send(event: E) {
     const definition = this.#definition;
     const transitions =
       definition[this.#state.type as keyof typeof definition & string];
