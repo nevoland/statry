@@ -1,17 +1,8 @@
 import { TypedEventEmitter } from "futurise";
 
 import { ENTER } from "../constants/ENTER.js";
-import type {
-  Event,
-  RuntimeEvent,
-  State,
-  StateMachineContext,
-  StateMachineDefinition,
-  StateMachineEvent,
-  StateMachineState,
-} from "../types";
-
-type StateMachineLike = Record<string, Record<PropertyKey, unknown>>;
+import type { CleanupCallback, Definition, Event, State } from "../types";
+import type { RuntimeEventInternal } from "../types/RuntimeEvent.js";
 
 /**
  * A state machine is a computational model that represents a system with a finite number of states and transitions between those states.
@@ -22,30 +13,29 @@ type StateMachineLike = Record<string, Record<PropertyKey, unknown>>;
  * @template Context - The type of the context object that can be used to store additional data relevant to the state machine's operation.
  */
 export class StateMachine<
-  S extends State = State,
-  E extends Event = Event,
-  Context = unknown,
-  M extends StateMachineLike = StateMachineDefinition<S, E, Context>,
-> extends TypedEventEmitter<RuntimeEvent<M>> {
+  S extends State,
+  E extends Event,
+  const Context = unknown,
+> extends TypedEventEmitter<RuntimeEventInternal<S, E, Context>> {
   /**
    * The context of the state machine, which can be used to store additional data that is relevant to the state machine's operation. The context is passed to the event handlers of the state machine, and can be used to maintain state across transitions.
    */
-  context: StateMachineContext<M> | undefined;
+  context: Context | undefined;
 
   /**
    * The definition of the state machine, which includes the states, events, and transitions that define the behavior of the state machine. This definition is used to determine how the state machine responds to events and transitions between states.
    */
-  #definition: M;
+  #definition: Definition<S, E, Context>;
 
   /**
    * The current state of the state machine, which represents the state that the state machine is currently in.
    */
-  #state: StateMachineState<M>;
+  #state: S;
 
   /**
    * A cleanup function that is called when the state machine transitions to a new state. This function is returned by the `ENTER` handler of the current state, and is called with the event that triggered the transition, the new state, and the context of the state machine.
    */
-  #cleanup?: StateMachineCleanup<M>;
+  #cleanup?: CleanupCallback<S, E, Context>;
 
   /**
    * Creates a new instance of the `StateMachine` class.
@@ -55,9 +45,9 @@ export class StateMachine<
    * @param context - An optional context object that can be used to configure the state machine's behavior.
    */
   constructor(
-    definition: M,
-    initialState: StateMachineState<M>,
-    context?: StateMachineContext<M>,
+    definition: Definition<S, E, Context>,
+    initialState: NoInfer<S>,
+    context?: Context,
   ) {
     super();
     this.#definition = definition;
@@ -65,20 +55,13 @@ export class StateMachine<
     this.context = context;
   }
 
-  send(event: StateMachineEvent<M>) {
-    const stateMachine = this.#definition;
+  send(event: E) {
+    const definition = this.#definition;
     const transitions =
-      stateMachine[this.#state.type as keyof typeof stateMachine & string];
+      definition[this.#state.type as keyof typeof definition & string];
     const state = this.#state;
-    const handler = transitions?.[
-      event.type as keyof typeof transitions & string
-    ] as
-      | ((
-          event: StateMachineEvent<M>,
-          state: StateMachineState<M>,
-          context: StateMachineContext<M>,
-        ) => StateMachineState<M> | void)
-      | undefined;
+    const handler =
+      transitions?.[event.type as keyof typeof transitions & string];
 
     if (handler == null) {
       if (!this.hasListeners("ignoredevent")) {
@@ -94,40 +77,38 @@ export class StateMachine<
       return;
     }
 
-    const context = this.context as StateMachineContext<M>;
-    const nextState = handler(event, state, context) ?? state;
+    const { context } = this;
+    const nextState =
+      (handler as StateEventHandler<S, E, Context>)(event, state, context) ??
+      state;
 
     if (nextState.type !== state.type) {
       const cleanup = this.#cleanup;
-      const enter = (
-        stateMachine[nextState.type as keyof typeof stateMachine & string] as
-          Record<PropertyKey, unknown> | undefined
-      )?.[ENTER] as
-        | ((
-            event: Extract<RuntimeEvent<M>, { type: "statetransition" }>,
-            state: StateMachineState<M>,
-            context: StateMachineContext<M>,
-          ) => StateMachineCleanup<M> | void)
-        | undefined;
+      const enter =
+        definition[nextState.type as keyof typeof definition & string]?.[ENTER];
       if (
         cleanup != null ||
         enter != null ||
         this.hasListeners("statetransition")
       ) {
-        const stateMachineEvent = {
+        const transitionEvent = {
           previousState: state,
           state: nextState,
           target: this,
           timeStamp: Date.now(),
           trigger: event,
           type: "statetransition",
-        } satisfies Extract<RuntimeEvent<M>, { type: "statetransition" }>;
+        } as const;
 
-        cleanup?.(stateMachineEvent, nextState, context);
+        cleanup?.(transitionEvent, nextState, context);
         this.#cleanup =
-          enter?.(stateMachineEvent, nextState, context) ?? undefined;
+          (enter as StateEnterHandler<S, E, Context>)?.(
+            transitionEvent,
+            nextState,
+            context,
+          ) ?? undefined;
 
-        this.dispatchEvent(stateMachineEvent);
+        this.dispatchEvent(transitionEvent);
       } else {
         this.#cleanup = undefined;
       }
@@ -170,13 +151,19 @@ export class StateMachine<
    * Creates a new instance of the `StateMachine` class with the same definition, state, and context as the current instance.
    * @returns A new `StateMachine` instance that is a clone of the current instance.
    */
-  clone(): StateMachine<S, E, Context, M> {
+  clone(): StateMachine<S, E, Context> {
     return new StateMachine(this.#definition, this.#state, this.context);
   }
 }
 
-type StateMachineCleanup<M extends StateMachineLike> = (
-  event: RuntimeEvent<M>,
-  state: StateMachineState<M>,
-  context: StateMachineContext<M>,
-) => void;
+type StateEventHandler<S extends State, E extends Event, Context> = (
+  event: E,
+  state: S,
+  context?: Context,
+) => S;
+
+type StateEnterHandler<S extends State, E extends Event, Context> = (
+  event: RuntimeEventInternal<S, E, Context>,
+  state: S,
+  context?: Context,
+) => CleanupCallback<S, E, Context> | undefined;

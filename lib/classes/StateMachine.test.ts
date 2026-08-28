@@ -1,7 +1,7 @@
 import { expect, test, vi } from "vitest";
 
 import { ENTER } from "../constants/ENTER.js";
-import type { StateMachineDefinition } from "../types";
+import type { Definition } from "../types";
 
 import { StateMachine } from "./StateMachine.js";
 
@@ -13,13 +13,7 @@ type LightEvent =
 
 type LightContext = { count: number };
 
-type LightDefinition = StateMachineDefinition<
-  LightState,
-  LightEvent,
-  LightContext
->;
-
-function createDefinition() {
+function createDefinition(): Definition<LightState, LightEvent, LightContext> {
   return {
     green: {
       next: () => ({ type: "yellow" }),
@@ -35,12 +29,12 @@ function createDefinition() {
       next: () => ({ type: "red" }),
       reset: () => ({ type: "red" }),
     },
-  } satisfies LightDefinition;
+  };
 }
 
 test("constructor stores definition, initial state, and context", () => {
   const definition = createDefinition();
-  const context: LightContext = { count: 0 };
+  const context = { count: 0 };
   const machine = new StateMachine(definition, { type: "red" }, context);
 
   expect(machine.state).toEqual({ type: "red" });
@@ -77,7 +71,7 @@ test("send passes the event, state, and context to the handler", () => {
   const definition = {
     green: {},
     red: { next: handler },
-  } satisfies StateMachineDefinition<
+  } satisfies Definition<
     { type: "red" } | { type: "green" },
     { type: "next" },
     { hello: string }
@@ -155,11 +149,7 @@ test("send treats a `void` return value as staying in the current state and does
     idle: {
       poke: () => undefined as unknown as { type: "idle" },
     },
-  } satisfies StateMachineDefinition<
-    { type: "idle" },
-    { type: "poke" },
-    unknown
-  >;
+  } satisfies Definition<{ type: "idle" }, { type: "poke" }, unknown>;
   const initialState = { type: "idle" } as const;
   const machine = new StateMachine(definition, initialState);
   const transitionListener = vi.fn();
@@ -176,11 +166,7 @@ test("send dispatches `selftransition` with the same previous and next state whe
     idle: {
       poke: () => undefined as unknown as { type: "idle" },
     },
-  } satisfies StateMachineDefinition<
-    { type: "idle" },
-    { type: "poke" },
-    unknown
-  >;
+  } satisfies Definition<{ type: "idle" }, { type: "poke" }, unknown>;
   const initialState = { type: "idle" } as const;
   const machine = new StateMachine(definition, initialState);
   const listener = vi.fn();
@@ -195,15 +181,14 @@ test("send dispatches `selftransition` with the same previous and next state whe
 });
 
 test("send updates the state reference on a self-transition to a new state object of the same type", () => {
-  const definition = {
+  const definition: Definition<
+    { type: "green"; blink: boolean },
+    { type: "toggle" }
+  > = {
     green: {
       toggle: (_event, state) => ({ ...state, blink: !state.blink }),
     },
-  } satisfies StateMachineDefinition<
-    { type: "green"; blink: boolean },
-    { type: "toggle" },
-    unknown
-  >;
+  };
   const initialState = { blink: false, type: "green" } as const;
   const machine = new StateMachine(definition, initialState);
 
@@ -214,15 +199,15 @@ test("send updates the state reference on a self-transition to a new state objec
 });
 
 test("send dispatches `selftransition` when a listener is attached and the state type does not change", () => {
-  const definition = {
-    green: {
-      toggle: (_event, state) => ({ ...state, blink: !state.blink }),
-    },
-  } satisfies StateMachineDefinition<
+  const definition: Definition<
     { type: "green"; blink: boolean },
     { type: "toggle" },
     unknown
-  >;
+  > = {
+    green: {
+      toggle: (_event, state) => ({ ...state, blink: !state.blink }),
+    },
+  };
   const previousState = { blink: false, type: "green" } as const;
   const machine = new StateMachine(definition, previousState);
   const listener = vi.fn();
@@ -246,15 +231,14 @@ test("send dispatches `selftransition` when a listener is attached and the state
 });
 
 test("send does not dispatch `selftransition` when no listener is attached", () => {
-  const definition = {
+  const definition: Definition<
+    { type: "green"; blink: boolean },
+    { type: "toggle" }
+  > = {
     green: {
       toggle: (_event, state) => ({ ...state, blink: !state.blink }),
     },
-  } satisfies StateMachineDefinition<
-    { type: "green"; blink: boolean },
-    { type: "toggle" },
-    unknown
-  >;
+  };
   const machine = new StateMachine(definition, { blink: false, type: "green" });
   const listener = vi.fn();
   machine.addEventListener("statetransition", listener);
@@ -298,7 +282,7 @@ test("send invokes the ENTER handler of the target state on a state transition",
   const definition = {
     green: { [ENTER]: enterGreen },
     red: { next: () => ({ type: "green" as const }) },
-  } satisfies StateMachineDefinition<
+  } satisfies Definition<
     { type: "red" } | { type: "green" },
     { type: "next" },
     { count: number }
@@ -331,7 +315,7 @@ test("send stores the cleanup callback returned by ENTER and invokes it on the n
     red: {
       next: () => ({ type: "green" as const }),
     },
-  } satisfies StateMachineDefinition<
+  } satisfies Definition<
     { type: "red" } | { type: "green" },
     { type: "next" },
     { count: number }
@@ -358,7 +342,11 @@ test("send stores the cleanup callback returned by ENTER and invokes it on the n
 
 test("send does not invoke cleanup on a self-transition", () => {
   const cleanup = vi.fn();
-  const definition = {
+  const definition: Definition<
+    { type: "red" } | { type: "green"; blink: boolean },
+    { type: "next" } | { type: "toggle" },
+    unknown
+  > = {
     green: {
       [ENTER]: () => cleanup,
       toggle: (_event, state) => ({ ...state, blink: !state.blink }),
@@ -366,11 +354,7 @@ test("send does not invoke cleanup on a self-transition", () => {
     red: {
       next: () => ({ blink: false, type: "green" as const }),
     },
-  } satisfies StateMachineDefinition<
-    { type: "red" } | { type: "green"; blink: boolean },
-    { type: "next" } | { type: "toggle" },
-    unknown
-  >;
+  };
   const machine = new StateMachine(definition, { type: "red" });
   machine.send({ type: "next" });
   expect(cleanup).not.toHaveBeenCalled();
@@ -396,7 +380,7 @@ test("send chains cleanup callbacks across multiple state transitions", () => {
       [ENTER]: () => cleanupYellow,
       next: () => ({ type: "red" as const }),
     },
-  } satisfies StateMachineDefinition<
+  } satisfies Definition<
     { type: "red" } | { type: "green" } | { type: "yellow" },
     { type: "next" },
     unknown
@@ -431,7 +415,7 @@ test("send clears the stored cleanup when ENTER does not return one", () => {
       },
       next: () => ({ type: "red" as const }),
     },
-  } satisfies StateMachineDefinition<
+  } satisfies Definition<
     { type: "red" } | { type: "green" } | { type: "yellow" },
     { type: "next" },
     unknown
@@ -525,19 +509,16 @@ test("clone is independent from the original machine", () => {
 });
 
 test("send is a no-op when the current state has no transition table entry", () => {
-  const definition = {
+  const definition: Definition<
+    { type: "active" } | { type: "orphan" },
+    { type: "next" }
+  > = {
     active: {
       next: () => ({ type: "active" as const }),
     },
-  } satisfies StateMachineDefinition<
-    { type: "active" },
-    { type: "next" },
-    unknown
-  >;
-  const machine = new StateMachine(
-    definition as unknown as Record<string, Record<PropertyKey, unknown>>,
-    { type: "orphan" },
-  );
+    orphan: {},
+  };
+  const machine = new StateMachine(definition, { type: "orphan" });
   const listener = vi.fn();
   machine.addEventListener("statetransition", listener);
   machine.addEventListener("selftransition", listener);
@@ -558,7 +539,7 @@ test("send dispatches the previous cleanup with the new state and target on tran
     red: {
       next: () => ({ type: "green" as const }),
     },
-  } satisfies StateMachineDefinition<
+  } satisfies Definition<
     { type: "red" } | { type: "green" },
     { type: "next" },
     { count: number }

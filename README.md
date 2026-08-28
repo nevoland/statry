@@ -18,7 +18,7 @@ Statry lets you describe a finite state machine as a plain object (states, event
 Everything is exported from the main entry-point:
 
 ```ts
-import { ENTER, StateMachine, type StateMachineDefinition } from "statry";
+import { ENTER, StateMachine, type Definition } from "statry";
 ```
 
 ### Examples
@@ -28,18 +28,20 @@ import { ENTER, StateMachine, type StateMachineDefinition } from "statry";
 The simplest definition is just states and their event handlers. Each handler returns the next state:
 
 ```ts
-const DEFINITION = {
+import { StateMachine, type Definition } from "statry";
+
+const DEFINITION: Definition<
+  { type: "idle" } | { type: "drag" },
+  { type: "mousedown" } | { type: "mouseup" },
+  never
+> = {
   idle: {
     mousedown: () => ({ type: "drag" }),
   },
   drag: {
     mouseup: () => ({ type: "idle" }),
   },
-} as const satisfies StateMachineDefinition<
-  { type: "idle" } | { type: "drag" },
-  { type: "mousedown" } | { type: "mouseup" },
-  never
->;
+};
 
 const machine = new StateMachine(DEFINITION, { type: "idle" });
 
@@ -47,12 +49,14 @@ machine.send({ type: "mousedown" }); // machine.state is now { type: "drag" }
 machine.send({ type: "mouseup" }); // back to { type: "idle" }
 ```
 
-The three type parameters in `StateMachineDefinition<States, Events, Context>` drive inference for every handler in the object. Sending an event that isn't in the union, or returning a state that isn't, is a compile-time error.
+The three type parameters in `Definition<States, Events, Context>` drive inference for every handler in the object. Sending an event that isn't in the union, or returning a state that isn't, is a compile-time error.
 
 > [!TIP]
-> The state, event, and context types can also be supplied directly as type parameters on the `StateMachine` constructor, in which case the definition is checked against them without needing a separate `as const satisfies` clause. This is convenient when the definition is inlined at the call site:
+> The state, event, and context types can also be supplied directly as type parameters on the `StateMachine` constructor, in which case the definition is checked against them without needing a separate `Definition` type. This is convenient when the definition is inlined at the call site:
 >
 > ```ts
+> import { StateMachine } from "statry";
+>
 > const machine = new StateMachine<
 >   { type: "idle" } | { type: "drag" },
 >   { type: "mousedown" } | { type: "mouseup" },
@@ -70,14 +74,20 @@ The three type parameters in `StateMachineDefinition<States, Events, Context>` d
 > );
 > ```
 >
-> Prefer `as const satisfies StateMachineDefinition<...>` when the definition lives in its own binding and you want its literal shape to drive inference at every call site; prefer the constructor form when the state, event, and context unions are the authoritative source of truth and the definition is a one-shot argument.
+> Prefer `Definition<...>` when the definition lives in its own binding and you want its literal shape to drive inference at every call site; prefer the constructor form when the state, event, and context unions are the authoritative source of truth and the definition is a one-shot argument.
 
 #### Auto-release with a timer
 
 To do work when a state is entered, define an `ENTER` handler. It receives the transition event, the new state, and the context. Use `event.target.send` to send events to the current state machine. If the handler returns a function, that function is called when the state is left, allowing timers and subscriptions to be cleaned up:
 
 ```ts
-const definition = {
+import { ENTER, StateMachine, type Definition } from "statry";
+
+const DEFINITION: Definition<
+  { type: "idle" } | { type: "drag" },
+  { type: "mousedown" } | { type: "mouseup" },
+  never
+> = {
   idle: {
     mousedown: () => ({ type: "drag" }),
   },
@@ -88,19 +98,37 @@ const definition = {
     },
     mouseup: () => ({ type: "idle" }),
   },
-} as const satisfies StateMachineDefinition<
-  { type: "idle" } | { type: "drag" },
-  { type: "mousedown" } | { type: "mouseup" },
-  never
->;
+};
 
-const machine = new StateMachine(definition, { type: "idle" });
-machine.send({ type: "mousedown" }); // auto-releases 3 s later
+const machine = new StateMachine(DEFINITION, { type: "idle" });
+machine.send({ type: "mousedown" }); // auto-releases 3 seconds later
 ```
 
 If the user releases early with a real `mouseup`, `clearTimeout` cancels the pending self-send.
 
-The XState v5 equivalent (from the [Stately](https://stately.ai/) ecosystem) uses `after` to describe delayed transitions:
+> [!TIP]
+> Instead of using `setTimeout` and `clearTimeout`, you can also use [`timeout` from Futurise](<[https://](https://github.com/nevoland/futurise#set-a-timer)>):
+>
+> ```ts
+> import { ENTER, type Definition } from "statry";
+> import { timeout } from "futurise";
+>
+> const DEFINITION: Definition<
+>  { type: "idle" } | { type: "drag" },
+>  { type: "mousedown" } | { type: "mouseup" },
+>  never
+> = {
+>  idle: {
+>    mousedown: () => ({ type: "drag" }),
+>  },
+>  drag: {
+>    [ENTER]: (event, state, context) => timeout(3000, () => event.target.send({ type: "mouseup" })),
+>    mouseup: () => ({ type: "idle" }),
+>  },
+> }
+> ```
+
+The [XState v5](https://github.com/statelyai/xstate) equivalent uses `after` to describe delayed transitions:
 
 ```ts
 import { createActor, createMachine } from "xstate";
@@ -130,6 +158,8 @@ XState treats `after` as a first-class concept, while Statry expresses the same 
 A transition handler is just a function, so a guard is expressed by returning the current `state` when a condition fails. Here a locked door only unlocks when the correct code is passed with the event:
 
 ```ts
+import { StateMachine } from "statry";
+
 type DoorState = { type: "locked" } | { type: "unlocked" } | { type: "open" };
 
 type DoorEvent =
@@ -140,7 +170,7 @@ type DoorEvent =
 
 type DoorContext = { code: string };
 
-const door = {
+const DEFINITION: Definition<DoorState, DoorEvent, DoorContext> = {
   locked: {
     unlock: (event, state, context) =>
       event.code === context.code ? { type: "unlocked" } : state,
@@ -152,9 +182,13 @@ const door = {
   open: {
     close: () => ({ type: "unlocked" }),
   },
-} as const satisfies StateMachineDefinition<DoorState, DoorEvent, DoorContext>;
+};
 
-const machine = new StateMachine(door, { type: "locked" }, { code: "0000" });
+const machine = new StateMachine(
+  DEFINITION,
+  { type: "locked" },
+  { code: "0000" },
+);
 
 machine.send({ type: "unlock", code: "1234" }); // still { type: "locked" }
 machine.send({ type: "unlock", code: "0000" }); // now { type: "unlocked" }
@@ -167,6 +201,7 @@ When the guard fails, no `statetransition` fires. Observers still see a `selftra
 States and events carry a `type` discriminator, but they can also carry data. Any value that changes as the machine runs belongs on the state itself: each transition returns a fresh state object, and no handler ever mutates what it has been given. The third type parameter is a shared context object, reserved for immutable configuration and dependencies that don't change over the machine's lifetime. This stopwatch keeps the accumulated `elapsed` milliseconds on every state, tracks the current run's `startedAt` on `running`, and reads its tick interval from the context:
 
 ```ts
+import { ENTER, StateMachine } from "statry";
 import { interval } from "futurise";
 
 type StopwatchState =
@@ -183,7 +218,7 @@ type StopwatchEvent =
 
 type StopwatchContext = { tickInterval: number };
 
-const machine = new StateMachine<
+const stopWatch = new StateMachine<
   StopwatchState,
   StopwatchEvent,
   StopwatchContext
@@ -215,17 +250,17 @@ const machine = new StateMachine<
   { tickInterval: 100 },
 );
 
-machine.addEventListener("statetransition", (event) => {
+stopWatch.addEventListener("statetransition", (event) => {
   console.log(event.previousState.type, "→", event.state.type);
 });
 
-machine.addEventListener("selftransition", (event) => {
+stopWatch.addEventListener("selftransition", (event) => {
   if (event.state.type === "running") {
     console.log("tick", event.state.elapsed);
   }
 });
 
-machine.send({ type: "start" });
+stopWatch.send({ type: "start" });
 ```
 
 The `baseElapsed` and `startedAt` state properties are frozen at the moment `start` fires and stay constant through the whole run, so each `tick` handler just derives `elapsed = baseElapsed + (Date.now() - startedAt)` from them and returns a new `running` state. The `ENTER` handler only registers the interval and returns its cleanup. It never writes back to state or context. On every interval firing, `event.target.send({ type: "tick" })` re-enters the machine, producing a `selftransition` that observers can react to through the runtime event stream. Context stays constant throughout: the interval hook reads `tickInterval` but nothing writes to it.
@@ -309,38 +344,41 @@ Because `StateMachine` extends `TypedEventEmitter`, one machine's `statetransiti
 Here a heartbeat machine starts pinging when a connection machine reaches `connected`, and stops when it goes back to `disconnected`:
 
 ```ts
-type ConnState = { type: "disconnected" } | { type: "connected" };
-type ConnEvent = { type: "connect" } | { type: "disconnect" };
+import { ENTER, StateMachine, type Definition } from "statry";
+import { interval } from "futurise";
 
-const connection = {
-  disconnected: {
-    connect: () => ({ type: "connected" }),
-  },
-  connected: {
-    disconnect: () => ({ type: "disconnected" }),
-  },
-} as const satisfies StateMachineDefinition<ConnState, ConnEvent, never>;
-
-type BeatState = { type: "off" } | { type: "on" };
-type BeatEvent = { type: "start" } | { type: "stop" };
-
-const heartbeat = {
-  off: {
-    start: () => ({ type: "on" }),
-  },
-  on: {
-    [ENTER]: () => {
-      const id = setInterval(() => console.log("ping"), 1000);
-      return () => clearInterval(id);
+const connectionMachine = new StateMachine<
+  { type: "disconnected" } | { type: "connected" },
+  { type: "connect" } | { type: "disconnect" }
+>(
+  {
+    disconnected: {
+      connect: () => ({ type: "connected" }),
     },
-    stop: () => ({ type: "off" }),
+    connected: {
+      disconnect: () => ({ type: "disconnected" }),
+    },
   },
-} as const satisfies StateMachineDefinition<BeatState, BeatEvent, never>;
+  {
+    type: "disconnected",
+  },
+);
 
-const connectionMachine = new StateMachine(connection, {
-  type: "disconnected",
-});
-const heartbeatMachine = new StateMachine(heartbeat, { type: "off" });
+const heartbeatMachine = new StateMachine<
+  { type: "off" } | { type: "on" },
+  { type: "start" } | { type: "stop" }
+>(
+  {
+    off: {
+      start: () => ({ type: "on" }),
+    },
+    on: {
+      [ENTER]: () => interval(1000, () => console.log("ping")),
+      stop: () => ({ type: "off" }),
+    },
+  },
+  { type: "off" },
+);
 
 connectionMachine.addEventListener("statetransition", (event) => {
   if (event.state.type === "connected") {
@@ -353,6 +391,38 @@ connectionMachine.addEventListener("statetransition", (event) => {
 connectionMachine.send({ type: "connect" }); // heartbeat starts pinging
 connectionMachine.send({ type: "disconnect" }); // heartbeat stops
 ```
+
+> [!TIP]
+> A state machine can also directly handle the events emitted by another time machine:
+>
+> ```ts
+> import {
+>   ENTER,
+>   StateMachine,
+>   type Definition,
+>   type RuntimeEvent,
+> } from "statry";
+>
+> const heartbeatMachine = new StateMachine<
+>   { type: "off" } | { type: "on" },
+>   Extract<RuntimeEvent<typeof connectionMachine>, { type: "statetransition" }>
+> >(
+>   {
+>     off: {
+>       statetransition: (event, state) =>
+>         event.state.type === "connected" ? { type: "on" } : state,
+>     },
+>     on: {
+>       [ENTER]: () => interval(1000, () => console.log("ping")),
+>       statetransition: (event, state) =>
+>         event.state.type === "disconnected" ? { type: "off" } : state,
+>     },
+>   },
+>   { type: "off" },
+> );
+>
+> connectionMachine.addEventListener("statetransition", heartbeatMachine.send);
+> ```
 
 The same pattern scales to any number of peers, and the event stream itself is fully typed, so both `event.state` and `event.trigger` narrow to the peer's declared unions.
 
@@ -367,7 +437,7 @@ The same pattern scales to any number of peers, and the event stream itself is f
 > - **Parallel states** come from composing peer machines through the event emitter (see the connection and heartbeat example); each region is its own `StateMachine` and they coordinate through `send`.
 > - **Hierarchical states** can be modelled by nesting a child `StateMachine` inside the context of a parent, or by encoding a substate as a payload on the outer state's `type`.
 >
-> Everything Statry offers is built from plain functions, closures, and event listeners, and typed against a single `StateMachineDefinition<States, Events, Context>`, without decorators, schema helpers, or a `setup({ types })` call. Reach for XState when you want the declarative vocabulary and its ecosystem (visual editor, actor model, model checking); reach for Statry when a plain-object definition, strong types, and composability through plain event listeners are enough.
+> Everything Statry offers is built from plain functions, closures, and event listeners, and typed against a single `Definition<States, Events, Context>`, without decorators, schema helpers, or a `setup({ types })` call. Reach for XState when you want the declarative vocabulary and its ecosystem (visual editor, actor model, model checking); reach for Statry when a plain-object definition, strong types, and composability through plain event listeners are enough.
 
 ### Installation
 
