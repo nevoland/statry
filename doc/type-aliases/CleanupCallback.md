@@ -6,9 +6,9 @@
 
 # Type Alias: CleanupCallback\<S, E, Context\>
 
-> **CleanupCallback**\<`S`, `E`, `Context`\> = (`event`, `state`, `context`) => `void`
+> **CleanupCallback**\<`S`, `E`, `Context`\> = (`event`, `state`, `context?`) => `void`
 
-Defined in: [types/CleanupCallback.ts:6](https://github.com/nevoland/statry/blob/26fbc7e280c5d9550693cfbd8d7e0c5c0a5b976e/lib/types/CleanupCallback.ts#L6)
+Defined in: [types/CleanupCallback.ts:5](https://github.com/nevoland/statry/blob/4ba956a46ccac90804d0f79f0d0b4167c81733a6/lib/types/CleanupCallback.ts#L5)
 
 ## Type Parameters
 
@@ -28,13 +28,13 @@ Defined in: [types/CleanupCallback.ts:6](https://github.com/nevoland/statry/blob
 
 ### event
 
-[`RuntimeEvent`](RuntimeEvent.md)\<[`StateMachineDefinition`](StateMachineDefinition.md)\<`S`, `E`, `Context`\>\>
+`RuntimeEventInternal`\<`S`, `E`, `Context`\>
 
 ### state
 
 `S`
 
-### context
+### context?
 
 `Context`
 
