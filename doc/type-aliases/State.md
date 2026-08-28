@@ -8,7 +8,7 @@
 
 > **State** = `object`
 
-Defined in: [types/State.ts:1](https://github.com/nevoland/statry/blob/3595f61ebb5998943d2bdd461e82cfa9e4c436b8/lib/types/State.ts#L1)
+Defined in: [types/State.ts:1](https://github.com/nevoland/statry/blob/f7836227d0d17e86fb52b62918107c9df8ef0af2/lib/types/State.ts#L1)
 
 ## Properties
 
@@ -16,4 +16,4 @@ Defined in: [types/State.ts:1](https://github.com/nevoland/statry/blob/3595f61eb
 
 > **type**: `string`
 
-Defined in: [types/State.ts:1](https://github.com/nevoland/statry/blob/3595f61ebb5998943d2bdd461e82cfa9e4c436b8/lib/types/State.ts#L1)
+Defined in: [types/State.ts:1](https://github.com/nevoland/statry/blob/f7836227d0d17e86fb52b62918107c9df8ef0af2/lib/types/State.ts#L1)

@@ -6,7 +6,7 @@
 
 # Class: StateMachine\<S, E, Context\>
 
-Defined in: [classes/StateMachine.ts:15](https://github.com/nevoland/statry/blob/3595f61ebb5998943d2bdd461e82cfa9e4c436b8/lib/classes/StateMachine.ts#L15)
+Defined in: [classes/StateMachine.ts:15](https://github.com/nevoland/statry/blob/f7836227d0d17e86fb52b62918107c9df8ef0af2/lib/classes/StateMachine.ts#L15)
 
 A state machine is a computational model that represents a system with a finite number of states and transitions between those states.
 The `StateMachine` class provides a way to define and manage state machines in TypeScript, allowing for the handling of events, state transitions, and context management.
@@ -41,7 +41,7 @@ The type of the context object that can be used to store additional data relevan
 
 > **new StateMachine**\<`S`, `E`, `Context`\>(`definition`, `initialState`, `context?`): `StateMachine`\<`S`, `E`, `Context`\>
 
-Defined in: [classes/StateMachine.ts:47](https://github.com/nevoland/statry/blob/3595f61ebb5998943d2bdd461e82cfa9e4c436b8/lib/classes/StateMachine.ts#L47)
+Defined in: [classes/StateMachine.ts:47](https://github.com/nevoland/statry/blob/f7836227d0d17e86fb52b62918107c9df8ef0af2/lib/classes/StateMachine.ts#L47)
 
 Creates a new instance of the `StateMachine` class.
 
@@ -79,9 +79,32 @@ An optional context object that can be used to configure the state machine's beh
 
 > **context**: `Context` \| `undefined`
 
-Defined in: [classes/StateMachine.ts:23](https://github.com/nevoland/statry/blob/3595f61ebb5998943d2bdd461e82cfa9e4c436b8/lib/classes/StateMachine.ts#L23)
+Defined in: [classes/StateMachine.ts:23](https://github.com/nevoland/statry/blob/f7836227d0d17e86fb52b62918107c9df8ef0af2/lib/classes/StateMachine.ts#L23)
 
 The context of the state machine, which can be used to store additional data that is relevant to the state machine's operation. The context is passed to the event handlers of the state machine, and can be used to maintain state across transitions.
+
+***
+
+### send
+
+> **send**: (`event`) => `void`
+
+Defined in: [classes/StateMachine.ts:65](https://github.com/nevoland/statry/blob/f7836227d0d17e86fb52b62918107c9df8ef0af2/lib/classes/StateMachine.ts#L65)
+
+Sends an event to the state machine, triggering any matching transition defined for the
+current state. Bound to the instance so it can be passed as a callback.
+
+#### Parameters
+
+##### event
+
+`E`
+
+The event to dispatch.
+
+#### Returns
+
+`void`
 
 ## Accessors
 
@@ -91,7 +114,7 @@ The context of the state machine, which can be used to store additional data tha
 
 > **get** **definition**(): [`Definition`](../type-aliases/Definition.md)\<`S`, `E`, `Context`\>
 
-Defined in: [classes/StateMachine.ts:146](https://github.com/nevoland/statry/blob/3595f61ebb5998943d2bdd461e82cfa9e4c436b8/lib/classes/StateMachine.ts#L146)
+Defined in: [classes/StateMachine.ts:155](https://github.com/nevoland/statry/blob/f7836227d0d17e86fb52b62918107c9df8ef0af2/lib/classes/StateMachine.ts#L155)
 
 The definition of the state machine, which includes the states, events, and transitions that define the behavior of the state machine.
 
@@ -107,7 +130,7 @@ The definition of the state machine, which includes the states, events, and tran
 
 > **get** **state**(): `S`
 
-Defined in: [classes/StateMachine.ts:139](https://github.com/nevoland/statry/blob/3595f61ebb5998943d2bdd461e82cfa9e4c436b8/lib/classes/StateMachine.ts#L139)
+Defined in: [classes/StateMachine.ts:148](https://github.com/nevoland/statry/blob/f7836227d0d17e86fb52b62918107c9df8ef0af2/lib/classes/StateMachine.ts#L148)
 
 The current state of the state machine.
 
@@ -121,7 +144,7 @@ The current state of the state machine.
 
 > **clone**(): `StateMachine`\<`S`, `E`, `Context`\>
 
-Defined in: [classes/StateMachine.ts:154](https://github.com/nevoland/statry/blob/3595f61ebb5998943d2bdd461e82cfa9e4c436b8/lib/classes/StateMachine.ts#L154)
+Defined in: [classes/StateMachine.ts:163](https://github.com/nevoland/statry/blob/f7836227d0d17e86fb52b62918107c9df8ef0af2/lib/classes/StateMachine.ts#L163)
 
 Creates a new instance of the `StateMachine` class with the same definition, state, and context as the current instance.
 
@@ -130,21 +153,3 @@ Creates a new instance of the `StateMachine` class with the same definition, sta
 `StateMachine`\<`S`, `E`, `Context`\>
 
 A new `StateMachine` instance that is a clone of the current instance.
-
-***
-
-### send()
-
-> **send**(`event`): `void`
-
-Defined in: [classes/StateMachine.ts:58](https://github.com/nevoland/statry/blob/3595f61ebb5998943d2bdd461e82cfa9e4c436b8/lib/classes/StateMachine.ts#L58)
-
-#### Parameters
-
-##### event
-
-`E`
-
-#### Returns
-
-`void`
