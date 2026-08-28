@@ -7,9 +7,9 @@ import type { State } from "./State";
  * Discriminated union of runtime events produced by a state machine: a transition to a new state,
  * a self-transition, or an event ignored by the current state.
  *
- * @template S The state type.
- * @template E The event type.
- * @template Context The state machine's context type.
+ * @template S - The state type.
+ * @template E - The event type.
+ * @template Context - The state machine's context type.
  */
 export type RuntimeEventInternal<
   S extends State = State,
