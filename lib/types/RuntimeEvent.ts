@@ -17,26 +17,43 @@ export type RuntimeEventInternal<
   Context = unknown,
 > =
   | {
+      /** Discriminator identifying a transition to a state whose `type` differs from the previous state. */
       type: "statetransition";
+      /** The new state the state machine has just entered. */
       state: S;
+      /** The state machine instance that produced this event. */
       target: StateMachine<S, E, Context>;
+      /** The event that triggered the transition. */
       trigger: E;
+      /** Timestamp (in milliseconds since epoch) at which the transition occurred. */
       timeStamp: number;
+      /** The state the state machine was in before the transition. */
       previousState: S;
     }
   | {
+      /** Discriminator identifying a transition that stays within the same state `type` (data may still change). */
       type: "selftransition";
+      /** The state after the transition; shares the same `type` as `previousState`. */
       state: S;
+      /** The state machine instance that produced this event. */
       target: StateMachine<S, E, Context>;
+      /** The event that triggered the self-transition. */
       trigger: E;
+      /** Timestamp (in milliseconds since epoch) at which the self-transition occurred. */
       timeStamp: number;
+      /** The state the state machine was in before the self-transition. */
       previousState: S;
     }
   | {
+      /** Discriminator identifying an event that had no matching handler in the current state. */
       type: "ignoredevent";
+      /** The current state of the state machine, which did not handle the event. */
       state: S;
+      /** The state machine instance that produced this event. */
       target: StateMachine<S, E, Context>;
+      /** The event that was dispatched but ignored. */
       trigger: E;
+      /** Timestamp (in milliseconds since epoch) at which the event was ignored. */
       timeStamp: number;
     };
 
