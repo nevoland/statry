@@ -575,7 +575,7 @@ test("hasListeners governs `statetransition` dispatch even when ENTER and cleanu
   expect(machine.state).toEqual({ type: "yellow" });
 });
 
-test("dispose does nothing when there is no listener and no stored cleanup", () => {
+test("dispose does nothing observable when there is no listener and no stored cleanup, but still marks the machine disposed", () => {
   const machine = new StateMachine(
     createDefinition(),
     { type: "red" },
@@ -586,9 +586,12 @@ test("dispose does nothing when there is no listener and no stored cleanup", () 
   machine.addEventListener("selftransition", listener);
   machine.addEventListener("ignoredevent", listener);
 
+  expect(machine.disposed).toBe(false);
+
   machine.dispose();
 
   expect(listener).not.toHaveBeenCalled();
+  expect(machine.disposed).toBe(true);
 });
 
 test("dispose dispatches `dispose` when a listener is attached", () => {
@@ -742,4 +745,98 @@ test("dispose does not invoke the initial state's ENTER cleanup since ENTER neve
   machine.dispose();
 
   expect(cleanup).not.toHaveBeenCalled();
+});
+
+test("disposed getter is false on a fresh machine and true after dispose (dispatch path)", () => {
+  const machine = new StateMachine(
+    createDefinition(),
+    { type: "red" },
+    { count: 0 },
+  );
+  machine.addEventListener("dispose", vi.fn());
+
+  expect(machine.disposed).toBe(false);
+
+  machine.dispose();
+
+  expect(machine.disposed).toBe(true);
+});
+
+test("dispose is idempotent: a second call does not re-dispatch or re-run cleanup", () => {
+  const cleanup = vi.fn();
+  const definition = {
+    green: {
+      [ENTER]: () => cleanup,
+    },
+    red: {
+      next: () => ({ type: "green" as const }),
+    },
+  } satisfies Definition<
+    { type: "red" } | { type: "green" },
+    { type: "next" },
+    unknown
+  >;
+  const machine = new StateMachine(definition, { type: "red" });
+  const listener = vi.fn();
+  machine.addEventListener("dispose", listener);
+
+  machine.send({ type: "next" });
+  machine.dispose();
+  machine.dispose();
+  machine.dispose();
+
+  expect(listener).toHaveBeenCalledTimes(1);
+  expect(cleanup).toHaveBeenCalledTimes(1);
+  expect(machine.disposed).toBe(true);
+});
+
+test("dispose is idempotent even on the fast path with no listener and no cleanup", () => {
+  const machine = new StateMachine(
+    createDefinition(),
+    { type: "red" },
+    { count: 0 },
+  );
+  const listener = vi.fn();
+  machine.addEventListener("dispose", listener);
+  machine.removeEventListener("dispose", listener);
+
+  machine.dispose();
+  machine.dispose();
+
+  expect(machine.disposed).toBe(true);
+  expect(listener).not.toHaveBeenCalled();
+});
+
+test("send is a silent no-op after dispose and does not update the state, dispatch events, or run handlers", () => {
+  const handler = vi.fn(() => ({ type: "green" as const }));
+  const definition = {
+    green: {
+      next: () => ({ type: "red" as const }),
+    },
+    red: {
+      next: handler,
+    },
+  } satisfies Definition<
+    { type: "red" } | { type: "green" },
+    { type: "next" } | { type: "unknown" },
+    unknown
+  >;
+  const machine = new StateMachine(definition, { type: "red" });
+  const stateListener = vi.fn();
+  const selfListener = vi.fn();
+  const ignoredListener = vi.fn();
+  machine.addEventListener("statetransition", stateListener);
+  machine.addEventListener("selftransition", selfListener);
+  machine.addEventListener("ignoredevent", ignoredListener);
+
+  machine.dispose();
+
+  machine.send({ type: "next" });
+  machine.send({ type: "unknown" } as { type: "next" });
+
+  expect(handler).not.toHaveBeenCalled();
+  expect(stateListener).not.toHaveBeenCalled();
+  expect(selfListener).not.toHaveBeenCalled();
+  expect(ignoredListener).not.toHaveBeenCalled();
+  expect(machine.state).toEqual({ type: "red" });
 });

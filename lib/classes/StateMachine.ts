@@ -38,6 +38,12 @@ export class StateMachine<
   #cleanup?: CleanupCallback<S, E, Context>;
 
   /**
+   * Whether `dispose()` has been called. Once `true`, `send()` is a silent no-op and further
+   * `dispose()` calls short-circuit.
+   */
+  #disposed: boolean;
+
+  /**
    * Creates a new instance of the `StateMachine` class.
    *
    * @param definition - The definition of the state machine, which includes the states, events, and transitions that define the behavior of the state machine.
@@ -52,6 +58,7 @@ export class StateMachine<
     super();
     this.#definition = definition;
     this.#state = initialState;
+    this.#disposed = false;
     this.context = context;
     this.send = (event: E) => this.#send(event);
   }
@@ -65,6 +72,10 @@ export class StateMachine<
   send: (event: E) => void;
 
   #send(event: E) {
+    if (this.#disposed) {
+      return;
+    }
+
     const definition = this.#definition;
     const transitions =
       definition[this.#state.type as keyof typeof definition & string];
@@ -157,6 +168,15 @@ export class StateMachine<
   }
 
   /**
+   * Whether the state machine has been disposed. Once `true`, `send()` becomes a silent no-op and
+   * subsequent calls to `dispose()` are ignored. No further runtime events are emitted after the
+   * final `dispose` event.
+   */
+  get disposed() {
+    return this.#disposed;
+  }
+
+  /**
    * Creates a new instance of the `StateMachine` class with the same definition, state, and context as the current instance.
    * @returns A new `StateMachine` instance that is a clone of the current instance.
    */
@@ -164,8 +184,22 @@ export class StateMachine<
     return new StateMachine(this.#definition, this.#state, this.context);
   }
 
+  /**
+   * Disposes the state machine: emits a final `dispose` runtime event, invokes the pending cleanup
+   * callback (if any) returned by the most recent `ENTER` hook, and marks the machine as disposed.
+   *
+   * After this call, `send()` becomes a silent no-op and no further runtime events are emitted.
+   *
+   * Idempotent: calling `dispose()` on an already-disposed machine returns immediately without
+   * re-dispatching the event or re-running the cleanup.
+   */
   dispose() {
+    if (this.#disposed) {
+      return;
+    }
+
     if (!this.hasListeners("dispose") && this.#cleanup == null) {
+      this.#disposed = true;
       return;
     }
 
@@ -177,7 +211,11 @@ export class StateMachine<
     } as const;
 
     this.dispatchEvent(disposeEvent);
+
     this.#cleanup?.(disposeEvent, this.#state, this.context);
+    this.#cleanup = undefined;
+
+    this.#disposed = true;
   }
 }
 
