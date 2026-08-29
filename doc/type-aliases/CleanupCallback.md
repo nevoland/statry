@@ -8,7 +8,7 @@
 
 > **CleanupCallback**\<`S`, `E`, `Context`\> = (`event`, `state`, `context?`) => `void`
 
-Defined in: [types/CleanupCallback.ts:13](https://github.com/nevoland/statry/blob/b4e0df9240029629771df17658b9c3e98d04f4e0/lib/types/CleanupCallback.ts#L13)
+Defined in: [types/CleanupCallback.ts:13](https://github.com/nevoland/statry/blob/54693dd9a671cdcc0c9210a15f1c77deb6299c1e/lib/types/CleanupCallback.ts#L13)
 
 Callback invoked when leaving a state, receiving the triggering runtime event, the state being
 exited, and the current context.

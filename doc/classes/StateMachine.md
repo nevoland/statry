@@ -6,7 +6,7 @@
 
 # Class: StateMachine\<S, E, Context\>
 
-Defined in: [classes/StateMachine.ts:15](https://github.com/nevoland/statry/blob/b4e0df9240029629771df17658b9c3e98d04f4e0/lib/classes/StateMachine.ts#L15)
+Defined in: [classes/StateMachine.ts:15](https://github.com/nevoland/statry/blob/54693dd9a671cdcc0c9210a15f1c77deb6299c1e/lib/classes/StateMachine.ts#L15)
 
 A state machine is a computational model that represents a system with a finite number of states and transitions between those states.
 The `StateMachine` class provides a way to define and manage state machines in TypeScript, allowing for the handling of events, state transitions, and context management.
@@ -41,7 +41,7 @@ The type of the context object that can be used to store additional data relevan
 
 > **new StateMachine**\<`S`, `E`, `Context`\>(`definition`, `initialState`, `context?`): `StateMachine`\<`S`, `E`, `Context`\>
 
-Defined in: [classes/StateMachine.ts:47](https://github.com/nevoland/statry/blob/b4e0df9240029629771df17658b9c3e98d04f4e0/lib/classes/StateMachine.ts#L47)
+Defined in: [classes/StateMachine.ts:53](https://github.com/nevoland/statry/blob/54693dd9a671cdcc0c9210a15f1c77deb6299c1e/lib/classes/StateMachine.ts#L53)
 
 Creates a new instance of the `StateMachine` class.
 
@@ -79,9 +79,27 @@ An optional context object that can be used to configure the state machine's beh
 
 > **context**: `Context` \| `undefined`
 
-Defined in: [classes/StateMachine.ts:23](https://github.com/nevoland/statry/blob/b4e0df9240029629771df17658b9c3e98d04f4e0/lib/classes/StateMachine.ts#L23)
+Defined in: [classes/StateMachine.ts:23](https://github.com/nevoland/statry/blob/54693dd9a671cdcc0c9210a15f1c77deb6299c1e/lib/classes/StateMachine.ts#L23)
 
 The context of the state machine, which can be used to store additional data that is relevant to the state machine's operation. The context is passed to the event handlers of the state machine, and can be used to maintain state across transitions.
+
+***
+
+### dispose
+
+> **dispose**: () => `void`
+
+Defined in: [classes/StateMachine.ts:195](https://github.com/nevoland/statry/blob/54693dd9a671cdcc0c9210a15f1c77deb6299c1e/lib/classes/StateMachine.ts#L195)
+
+Disposes the state machine: emits a final `dispose` runtime event, invokes the pending cleanup callback (if any) returned by the most recent `ENTER` hook, and marks the machine as disposed. Bound to the instance so it can be passed as a callback.
+
+After this call, `send()` becomes a silent no-op and no further runtime events are emitted.
+Idempotent: calling `dispose()` on an already-disposed machine returns immediately without
+re-dispatching the event or re-running the cleanup.
+
+#### Returns
+
+`void`
 
 ***
 
@@ -89,7 +107,7 @@ The context of the state machine, which can be used to store additional data tha
 
 > **send**: (`event`) => `void`
 
-Defined in: [classes/StateMachine.ts:65](https://github.com/nevoland/statry/blob/b4e0df9240029629771df17658b9c3e98d04f4e0/lib/classes/StateMachine.ts#L65)
+Defined in: [classes/StateMachine.ts:73](https://github.com/nevoland/statry/blob/54693dd9a671cdcc0c9210a15f1c77deb6299c1e/lib/classes/StateMachine.ts#L73)
 
 Sends an event to the state machine, triggering any matching transition defined for the
 current state. Bound to the instance so it can be passed as a callback.
@@ -114,7 +132,7 @@ The event to dispatch.
 
 > **get** **definition**(): [`Definition`](../type-aliases/Definition.md)\<`S`, `E`, `Context`\>
 
-Defined in: [classes/StateMachine.ts:155](https://github.com/nevoland/statry/blob/b4e0df9240029629771df17658b9c3e98d04f4e0/lib/classes/StateMachine.ts#L155)
+Defined in: [classes/StateMachine.ts:167](https://github.com/nevoland/statry/blob/54693dd9a671cdcc0c9210a15f1c77deb6299c1e/lib/classes/StateMachine.ts#L167)
 
 The definition of the state machine, which includes the states, events, and transitions that define the behavior of the state machine.
 
@@ -124,13 +142,31 @@ The definition of the state machine, which includes the states, events, and tran
 
 ***
 
+### disposed
+
+#### Get Signature
+
+> **get** **disposed**(): `boolean`
+
+Defined in: [classes/StateMachine.ts:176](https://github.com/nevoland/statry/blob/54693dd9a671cdcc0c9210a15f1c77deb6299c1e/lib/classes/StateMachine.ts#L176)
+
+Whether the state machine has been disposed. Once `true`, `send()` becomes a silent no-op and
+subsequent calls to `dispose()` are ignored. No further runtime events are emitted after the
+final `dispose` event.
+
+##### Returns
+
+`boolean`
+
+***
+
 ### state
 
 #### Get Signature
 
 > **get** **state**(): `S`
 
-Defined in: [classes/StateMachine.ts:148](https://github.com/nevoland/statry/blob/b4e0df9240029629771df17658b9c3e98d04f4e0/lib/classes/StateMachine.ts#L148)
+Defined in: [classes/StateMachine.ts:160](https://github.com/nevoland/statry/blob/54693dd9a671cdcc0c9210a15f1c77deb6299c1e/lib/classes/StateMachine.ts#L160)
 
 The current state of the state machine.
 
@@ -144,7 +180,7 @@ The current state of the state machine.
 
 > **clone**(): `StateMachine`\<`S`, `E`, `Context`\>
 
-Defined in: [classes/StateMachine.ts:163](https://github.com/nevoland/statry/blob/b4e0df9240029629771df17658b9c3e98d04f4e0/lib/classes/StateMachine.ts#L163)
+Defined in: [classes/StateMachine.ts:184](https://github.com/nevoland/statry/blob/54693dd9a671cdcc0c9210a15f1c77deb6299c1e/lib/classes/StateMachine.ts#L184)
 
 Creates a new instance of the `StateMachine` class with the same definition, state, and context as the current instance.
 

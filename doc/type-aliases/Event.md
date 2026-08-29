@@ -8,7 +8,7 @@
 
 > **Event** = `object`
 
-Defined in: [types/Event.ts:1](https://github.com/nevoland/statry/blob/b4e0df9240029629771df17658b9c3e98d04f4e0/lib/types/Event.ts#L1)
+Defined in: [types/Event.ts:1](https://github.com/nevoland/statry/blob/54693dd9a671cdcc0c9210a15f1c77deb6299c1e/lib/types/Event.ts#L1)
 
 ## Properties
 
@@ -16,4 +16,4 @@ Defined in: [types/Event.ts:1](https://github.com/nevoland/statry/blob/b4e0df924
 
 > **type**: `string`
 
-Defined in: [types/Event.ts:1](https://github.com/nevoland/statry/blob/b4e0df9240029629771df17658b9c3e98d04f4e0/lib/types/Event.ts#L1)
+Defined in: [types/Event.ts:1](https://github.com/nevoland/statry/blob/54693dd9a671cdcc0c9210a15f1c77deb6299c1e/lib/types/Event.ts#L1)

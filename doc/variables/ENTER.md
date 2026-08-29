@@ -8,6 +8,13 @@
 
 > `const` **ENTER**: *typeof* `ENTER`
 
-Defined in: [constants/ENTER.ts:4](https://github.com/nevoland/statry/blob/b4e0df9240029629771df17658b9c3e98d04f4e0/lib/constants/ENTER.ts#L4)
+Defined in: [constants/ENTER.ts:11](https://github.com/nevoland/statry/blob/54693dd9a671cdcc0c9210a15f1c77deb6299c1e/lib/constants/ENTER.ts#L11)
 
-Lifecycle name when a state is entered.
+Lifecycle hook key invoked when the state machine transitions into a state whose `type` differs
+from the previous state. The hook receives the triggering `statetransition` runtime event and
+may return a cleanup callback that runs when the state is left (via another transition or via
+disposal).
+
+The hook is **not** invoked for the initial state a machine is constructed (or cloned) in,
+since no transition has occurred. To run setup on startup, model an explicit `idle → started`
+transition triggered by a bootstrap event.
