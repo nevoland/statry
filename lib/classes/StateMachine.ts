@@ -61,6 +61,7 @@ export class StateMachine<
     this.#disposed = false;
     this.context = context;
     this.send = (event: E) => this.#send(event);
+    this.dispose = () => this.#dispose();
   }
 
   /**
@@ -185,15 +186,15 @@ export class StateMachine<
   }
 
   /**
-   * Disposes the state machine: emits a final `dispose` runtime event, invokes the pending cleanup
-   * callback (if any) returned by the most recent `ENTER` hook, and marks the machine as disposed.
+   * Disposes the state machine: emits a final `dispose` runtime event, invokes the pending cleanup callback (if any) returned by the most recent `ENTER` hook, and marks the machine as disposed. Bound to the instance so it can be passed as a callback.
    *
    * After this call, `send()` becomes a silent no-op and no further runtime events are emitted.
-   *
    * Idempotent: calling `dispose()` on an already-disposed machine returns immediately without
    * re-dispatching the event or re-running the cleanup.
    */
-  dispose() {
+  dispose: () => void;
+
+  #dispose() {
     if (this.#disposed) {
       return;
     }
