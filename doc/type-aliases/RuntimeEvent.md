@@ -8,7 +8,7 @@
 
 > **RuntimeEvent**\<`M`\> = `RuntimeEventInternal`\<`StateMachineState`\<`M`\>, `StateMachineEvent`\<`M`\>, `StateMachineContext`\<`M`\>\>
 
-Defined in: [types/RuntimeEvent.ts:48](https://github.com/nevoland/statry/blob/f7836227d0d17e86fb52b62918107c9df8ef0af2/lib/types/RuntimeEvent.ts#L48)
+Defined in: [types/RuntimeEvent.ts:65](https://github.com/nevoland/statry/blob/b4e0df9240029629771df17658b9c3e98d04f4e0/lib/types/RuntimeEvent.ts#L65)
 
 Runtime event emitted by a `StateMachine`, with state, event, and context types inferred from `M`.
 

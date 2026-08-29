@@ -8,6 +8,6 @@
 
 > `const` **ENTER**: *typeof* `ENTER`
 
-Defined in: [constants/ENTER.ts:4](https://github.com/nevoland/statry/blob/f7836227d0d17e86fb52b62918107c9df8ef0af2/lib/constants/ENTER.ts#L4)
+Defined in: [constants/ENTER.ts:4](https://github.com/nevoland/statry/blob/b4e0df9240029629771df17658b9c3e98d04f4e0/lib/constants/ENTER.ts#L4)
 
 Lifecycle name when a state is entered.
