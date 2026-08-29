@@ -5,7 +5,7 @@ import type { State } from "./State";
 
 /**
  * Discriminated union of runtime events produced by a state machine: a transition to a new state,
- * a self-transition, or an event ignored by the current state.
+ * a self-transition, an event ignored by the current state, or the machine being disposed.
  *
  * @template S - The state type.
  * @template E - The event type.
@@ -55,6 +55,16 @@ export type RuntimeEventInternal<
       trigger: E;
       /** Timestamp (in milliseconds since epoch) at which the event was ignored. */
       timeStamp: number;
+    }
+  | {
+      /** Discriminator identifying the state machine being disposed. No further events will be emitted after this one. */
+      type: "dispose";
+      /** The state machine instance that was disposed. */
+      target: StateMachine<S, E, Context>;
+      /** Timestamp (in milliseconds since epoch) at which disposal occurred. */
+      timeStamp: number;
+      /** The state the state machine was in at the moment of disposal. */
+      previousState: S;
     };
 
 /**

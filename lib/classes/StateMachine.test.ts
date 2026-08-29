@@ -574,3 +574,172 @@ test("hasListeners governs `statetransition` dispatch even when ENTER and cleanu
   expect(listener).toHaveBeenCalledTimes(1);
   expect(machine.state).toEqual({ type: "yellow" });
 });
+
+test("dispose does nothing when there is no listener and no stored cleanup", () => {
+  const machine = new StateMachine(
+    createDefinition(),
+    { type: "red" },
+    { count: 0 },
+  );
+  const listener = vi.fn();
+  machine.addEventListener("statetransition", listener);
+  machine.addEventListener("selftransition", listener);
+  machine.addEventListener("ignoredevent", listener);
+
+  machine.dispose();
+
+  expect(listener).not.toHaveBeenCalled();
+});
+
+test("dispose dispatches `dispose` when a listener is attached", () => {
+  const machine = new StateMachine(
+    createDefinition(),
+    { type: "red" },
+    { count: 0 },
+  );
+  const listener = vi.fn();
+  machine.addEventListener("dispose", listener);
+
+  const before = Date.now();
+  machine.dispose();
+  const after = Date.now();
+
+  expect(listener).toHaveBeenCalledTimes(1);
+  const event = listener.mock.calls[0]?.[0];
+  expect(event).toMatchObject({
+    previousState: { type: "red" },
+    target: machine,
+    type: "dispose",
+  });
+  expect(event.timeStamp).toBeGreaterThanOrEqual(before);
+  expect(event.timeStamp).toBeLessThanOrEqual(after);
+});
+
+test("dispose invokes the stored cleanup callback with the dispose event, current state, and context", () => {
+  const cleanup = vi.fn();
+  const definition = {
+    green: {
+      [ENTER]: () => cleanup,
+    },
+    red: {
+      next: () => ({ type: "green" as const }),
+    },
+  } satisfies Definition<
+    { type: "red" } | { type: "green" },
+    { type: "next" },
+    { count: number }
+  >;
+  const context = { count: 0 };
+  const machine = new StateMachine(definition, { type: "red" }, context);
+
+  machine.send({ type: "next" });
+  expect(cleanup).not.toHaveBeenCalled();
+
+  machine.dispose();
+
+  expect(cleanup).toHaveBeenCalledTimes(1);
+  const [event, state, receivedContext] = cleanup.mock.calls[0] ?? [];
+  expect(event).toMatchObject({
+    previousState: { type: "green" },
+    target: machine,
+    type: "dispose",
+  });
+  expect(state).toEqual({ type: "green" });
+  expect(receivedContext).toBe(context);
+});
+
+test("dispose invokes the cleanup even when no listener is attached", () => {
+  const cleanup = vi.fn();
+  const definition = {
+    green: {
+      [ENTER]: () => cleanup,
+    },
+    red: {
+      next: () => ({ type: "green" as const }),
+    },
+  } satisfies Definition<
+    { type: "red" } | { type: "green" },
+    { type: "next" },
+    unknown
+  >;
+  const machine = new StateMachine(definition, { type: "red" });
+
+  machine.send({ type: "next" });
+  machine.dispose();
+
+  expect(cleanup).toHaveBeenCalledTimes(1);
+});
+
+test("dispose dispatches the event before invoking the cleanup callback", () => {
+  const order: string[] = [];
+  const cleanup = vi.fn(() => {
+    order.push("cleanup");
+  });
+  const definition = {
+    green: {
+      [ENTER]: () => cleanup,
+    },
+    red: {
+      next: () => ({ type: "green" as const }),
+    },
+  } satisfies Definition<
+    { type: "red" } | { type: "green" },
+    { type: "next" },
+    unknown
+  >;
+  const machine = new StateMachine(definition, { type: "red" });
+  const listener = vi.fn(() => {
+    order.push("listener");
+  });
+  machine.addEventListener("dispose", listener);
+
+  machine.send({ type: "next" });
+  machine.dispose();
+
+  expect(order).toEqual(["listener", "cleanup"]);
+});
+
+test("dispose does not invoke a cleanup that was cleared by a subsequent ENTER returning nothing", () => {
+  const cleanupGreen = vi.fn();
+  const definition = {
+    green: {
+      [ENTER]: () => cleanupGreen,
+      next: () => ({ type: "yellow" as const }),
+    },
+    red: {
+      next: () => ({ type: "green" as const }),
+    },
+    yellow: {
+      [ENTER]: () => {
+        // No cleanup returned.
+      },
+    },
+  } satisfies Definition<
+    { type: "red" } | { type: "green" } | { type: "yellow" },
+    { type: "next" },
+    unknown
+  >;
+  const machine = new StateMachine(definition, { type: "red" });
+
+  machine.send({ type: "next" });
+  machine.send({ type: "next" });
+  expect(cleanupGreen).toHaveBeenCalledTimes(1);
+
+  machine.dispose();
+
+  expect(cleanupGreen).toHaveBeenCalledTimes(1);
+});
+
+test("dispose does not invoke the initial state's ENTER cleanup since ENTER never ran", () => {
+  const cleanup = vi.fn();
+  const definition = {
+    green: {
+      [ENTER]: () => cleanup,
+    },
+  } satisfies Definition<{ type: "green" }, { type: "next" }, unknown>;
+  const machine = new StateMachine(definition, { type: "green" });
+
+  machine.dispose();
+
+  expect(cleanup).not.toHaveBeenCalled();
+});

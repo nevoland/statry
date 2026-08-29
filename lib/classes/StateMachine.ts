@@ -163,6 +163,22 @@ export class StateMachine<
   clone(): StateMachine<S, E, Context> {
     return new StateMachine(this.#definition, this.#state, this.context);
   }
+
+  dispose() {
+    if (!this.hasListeners("dispose") && this.#cleanup == null) {
+      return;
+    }
+
+    const disposeEvent = {
+      previousState: this.#state,
+      target: this,
+      timeStamp: Date.now(),
+      type: "dispose",
+    } as const;
+
+    this.dispatchEvent(disposeEvent);
+    this.#cleanup?.(disposeEvent, this.#state, this.context);
+  }
 }
 
 type StateEventHandler<S extends State, E extends Event, Context> = (
