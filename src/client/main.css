@@ -7,6 +7,19 @@ body {
 }
 
 #app {
-  @apply h-full w-full bg-slate-100 p-4 dark:bg-slate-900;
-  @apply flex flex-col justify-center align-middle;
+  @apply min-h-full w-full bg-slate-900 p-6 text-slate-200;
+  @apply flex flex-col;
+}
+
+@keyframes inspector-edge-flash {
+  0% {
+    filter: drop-shadow(0 0 6px rgb(96 165 250 / 0.9));
+  }
+  100% {
+    filter: drop-shadow(0 0 0 rgb(96 165 250 / 0));
+  }
+}
+
+.inspector-edge-flash {
+  animation: inspector-edge-flash 600ms ease-out;
 }
