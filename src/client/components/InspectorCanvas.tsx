@@ -43,12 +43,24 @@ type ViewBox = { minX: number; minY: number; width: number; height: number };
 
 type NodeOverrideKey = string;
 
+type Rect = { x: number; y: number; width: number; height: number };
+
 type PositionedMachine = {
   entry: InspectorMachineEntry;
   view: InspectorMachineView;
   layout: InspectorLayoutResult;
   offset: { x: number; y: number };
-  frame: { x: number; y: number; width: number; height: number };
+  /**
+   * Frame wrapping the *effective* content (post node + label overrides).
+   * Grows as the user drags nodes or labels outside the initial box.
+   */
+  frame: Rect;
+  /**
+   * Stable frame based on the baseline layout (no overrides). Used to compute
+   * the canvas viewBox and to keep neighboring machines from jumping when a
+   * node is dragged.
+   */
+  baselineFrame: Rect;
 };
 
 type NodeDrag = {
@@ -126,8 +138,8 @@ export function InspectorCanvas({
   const [popover, setPopover] = useState<PopoverState | null>(null);
 
   const positioned = useMemo(
-    () => layoutAllMachines(machines, views, overrides),
-    [machines, views, overrides],
+    () => layoutAllMachines(machines, views, overrides, labelOverrides),
+    [machines, views, overrides, labelOverrides],
   );
   const contentBounds = useMemo(
     () => computeCanvasBounds(positioned),
@@ -955,6 +967,7 @@ function layoutAllMachines(
   machines: InspectorMachineEntry[],
   views: Map<AnyStateMachine, InspectorMachineView>,
   overrides: Map<NodeOverrideKey, { x: number; y: number }>,
+  labelOverrides: Map<string, { x: number; y: number }>,
 ): PositionedMachine[] {
   const laidOut: {
     entry: InspectorMachineEntry;
@@ -973,9 +986,9 @@ function layoutAllMachines(
         machineOverrides.set(state, pos);
       }
     }
-    // Baseline layout (without overrides) fixes the frame position and content
-    // offset, so dragging a node cannot shift the whole machine and break the
-    // 1:1 mapping between mouse motion and screen motion.
+    // Baseline layout (without overrides) fixes the content offset, so
+    // dragging a node cannot shift the whole machine and break the 1:1 mapping
+    // between mouse motion and screen motion.
     const baseline = inspectorLayout(
       view.description,
       view.initialStateType,
@@ -993,7 +1006,7 @@ function layoutAllMachines(
     laidOut.push({ baseline, entry, live, view });
   }
 
-  return positionMachines(laidOut);
+  return positionMachines(laidOut, labelOverrides);
 }
 
 function positionMachines(
@@ -1003,41 +1016,90 @@ function positionMachines(
     baseline: InspectorLayoutResult;
     live: InspectorLayoutResult;
   }[],
+  labelOverrides: Map<string, { x: number; y: number }>,
 ): PositionedMachine[] {
   const result: PositionedMachine[] = [];
   let currentX = 0;
   let currentY = 0;
   let rowHeight = 0;
   for (const item of laidOut) {
-    const frameWidth = item.baseline.width + FRAME_PADDING * 2;
-    const frameHeight =
+    const baselineFrameWidth = item.baseline.width + FRAME_PADDING * 2;
+    const baselineFrameHeight =
       item.baseline.height + FRAME_PADDING * 2 + TITLE_HEIGHT;
-    if (currentX > 0 && currentX + frameWidth > TARGET_ROW_WIDTH) {
+    if (currentX > 0 && currentX + baselineFrameWidth > TARGET_ROW_WIDTH) {
       currentX = 0;
       currentY += rowHeight + ROW_GAP;
       rowHeight = 0;
     }
-    const frameX = currentX;
-    const frameY = currentY;
-    const contentOffsetX = frameX + FRAME_PADDING - item.baseline.minX;
+    const baselineFrameX = currentX;
+    const baselineFrameY = currentY;
+    const contentOffsetX =
+      baselineFrameX + FRAME_PADDING - item.baseline.minX;
     const contentOffsetY =
-      frameY + TITLE_HEIGHT + FRAME_PADDING - item.baseline.minY;
+      baselineFrameY + TITLE_HEIGHT + FRAME_PADDING - item.baseline.minY;
+
+    const baselineFrame: Rect = {
+      height: baselineFrameHeight,
+      width: baselineFrameWidth,
+      x: baselineFrameX,
+      y: baselineFrameY,
+    };
+
+    // Effective bounds account for both node overrides (already baked into
+    // `item.live`) and label overrides (which the layout doesn't know about).
+    const effective = computeEffectiveBounds(
+      item.live,
+      labelOverrides,
+      item.entry.name,
+    );
+    const frame: Rect = {
+      height:
+        effective.maxY - effective.minY + FRAME_PADDING * 2 + TITLE_HEIGHT,
+      width: effective.maxX - effective.minX + FRAME_PADDING * 2,
+      x: contentOffsetX + effective.minX - FRAME_PADDING,
+      y:
+        contentOffsetY + effective.minY - FRAME_PADDING - TITLE_HEIGHT,
+    };
+
     result.push({
+      baselineFrame,
       entry: item.entry,
-      frame: {
-        height: frameHeight,
-        width: frameWidth,
-        x: frameX,
-        y: frameY,
-      },
+      frame,
       layout: item.live,
       offset: { x: contentOffsetX, y: contentOffsetY },
       view: item.view,
     });
-    currentX += frameWidth + MACHINE_GAP;
-    if (frameHeight > rowHeight) rowHeight = frameHeight;
+
+    currentX += baselineFrameWidth + MACHINE_GAP;
+    if (baselineFrameHeight > rowHeight) rowHeight = baselineFrameHeight;
   }
   return result;
+}
+
+const LABEL_HEIGHT_UNITS = 18;
+
+function computeEffectiveBounds(
+  layout: InspectorLayoutResult,
+  labelOverrides: Map<string, { x: number; y: number }>,
+  machineName: string,
+): { minX: number; minY: number; maxX: number; maxY: number } {
+  let minX = layout.minX;
+  let minY = layout.minY;
+  let maxX = layout.minX + layout.width;
+  let maxY = layout.minY + layout.height;
+  if (labelOverrides.size === 0) return { maxX, maxY, minX, minY };
+  for (const edge of layout.edges) {
+    const key = labelOverrideKey(machineName, edge);
+    const override = labelOverrides.get(key);
+    if (override === undefined) continue;
+    const halfWidth = edge.labelWidth / 2;
+    const halfHeight = LABEL_HEIGHT_UNITS / 2;
+    if (override.x - halfWidth < minX) minX = override.x - halfWidth;
+    if (override.y - halfHeight < minY) minY = override.y - halfHeight;
+    if (override.x + halfWidth > maxX) maxX = override.x + halfWidth;
+    if (override.y + halfHeight > maxY) maxY = override.y + halfHeight;
+  }
+  return { maxX, maxY, minX, minY };
 }
 
 function computeCanvasBounds(machines: PositionedMachine[]): ViewBox {
@@ -1049,10 +1111,11 @@ function computeCanvasBounds(machines: PositionedMachine[]): ViewBox {
   let maxX = -Infinity;
   let maxY = -Infinity;
   for (const pm of machines) {
-    if (pm.frame.x < minX) minX = pm.frame.x;
-    if (pm.frame.y < minY) minY = pm.frame.y;
-    if (pm.frame.x + pm.frame.width > maxX) maxX = pm.frame.x + pm.frame.width;
-    if (pm.frame.y + pm.frame.height > maxY) maxY = pm.frame.y + pm.frame.height;
+    const bf = pm.baselineFrame;
+    if (bf.x < minX) minX = bf.x;
+    if (bf.y < minY) minY = bf.y;
+    if (bf.x + bf.width > maxX) maxX = bf.x + bf.width;
+    if (bf.y + bf.height > maxY) maxY = bf.y + bf.height;
   }
   return {
     height: maxY - minY + CANVAS_PADDING * 2,
