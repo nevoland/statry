@@ -172,17 +172,36 @@ export function InspectorCanvas({
   }, [popover]);
 
   function getScale(): { scaleX: number; scaleY: number } {
-    if (svgRef.current === null || viewBox === null) {
+    const svg = svgRef.current;
+    if (svg === null) return { scaleX: 1, scaleY: 1 };
+    const ctm = svg.getScreenCTM();
+    if (ctm === null || ctm.a === 0 || ctm.d === 0) {
       return { scaleX: 1, scaleY: 1 };
     }
-    const rect = svgRef.current.getBoundingClientRect();
-    return {
-      scaleX: viewBox.width / rect.width,
-      scaleY: viewBox.height / rect.height,
-    };
+    return { scaleX: 1 / ctm.a, scaleY: 1 / ctm.d };
   }
 
-  const applyZoom = (factor: number, anchorClientX?: number, anchorClientY?: number) => {
+  function clientToWorld(
+    clientX: number,
+    clientY: number,
+  ): { x: number; y: number } | null {
+    const svg = svgRef.current;
+    if (svg === null) return null;
+    const ctm = svg.getScreenCTM();
+    if (ctm === null) return null;
+    const inverse = ctm.inverse();
+    const point = svg.createSVGPoint();
+    point.x = clientX;
+    point.y = clientY;
+    const world = point.matrixTransform(inverse);
+    return { x: world.x, y: world.y };
+  }
+
+  const applyZoom = (
+    factor: number,
+    anchorClientX?: number,
+    anchorClientY?: number,
+  ) => {
     setViewBox((previous) => {
       if (previous === null) return previous;
       const currentScale = contentBounds.width / previous.width;
@@ -190,23 +209,39 @@ export function InspectorCanvas({
       const effectiveFactor = currentScale / nextScale;
       const newWidth = previous.width * effectiveFactor;
       const newHeight = previous.height * effectiveFactor;
-      const rect = svgRef.current?.getBoundingClientRect();
-      const anchorX = anchorClientX ?? (rect ? rect.left + rect.width / 2 : 0);
-      const anchorY = anchorClientY ?? (rect ? rect.top + rect.height / 2 : 0);
-      const worldX =
-        rect === undefined
-          ? previous.minX + previous.width / 2
-          : previous.minX + ((anchorX - rect.left) / rect.width) * previous.width;
-      const worldY =
-        rect === undefined
-          ? previous.minY + previous.height / 2
-          : previous.minY + ((anchorY - rect.top) / rect.height) * previous.height;
-      const fx = rect === undefined ? 0.5 : (anchorX - rect.left) / rect.width;
-      const fy = rect === undefined ? 0.5 : (anchorY - rect.top) / rect.height;
+      const svg = svgRef.current;
+      let anchorWorld: { x: number; y: number };
+      let localFraction: { x: number; y: number };
+      if (
+        svg !== null &&
+        anchorClientX !== undefined &&
+        anchorClientY !== undefined
+      ) {
+        const world = clientToWorld(anchorClientX, anchorClientY);
+        if (world === null) {
+          anchorWorld = {
+            x: previous.minX + previous.width / 2,
+            y: previous.minY + previous.height / 2,
+          };
+          localFraction = { x: 0.5, y: 0.5 };
+        } else {
+          anchorWorld = world;
+          localFraction = {
+            x: (world.x - previous.minX) / previous.width,
+            y: (world.y - previous.minY) / previous.height,
+          };
+        }
+      } else {
+        anchorWorld = {
+          x: previous.minX + previous.width / 2,
+          y: previous.minY + previous.height / 2,
+        };
+        localFraction = { x: 0.5, y: 0.5 };
+      }
       return {
         height: newHeight,
-        minX: worldX - fx * newWidth,
-        minY: worldY - fy * newHeight,
+        minX: anchorWorld.x - localFraction.x * newWidth,
+        minY: anchorWorld.y - localFraction.y * newHeight,
         width: newWidth,
       };
     });
@@ -817,7 +852,8 @@ function layoutAllMachines(
   const laidOut: {
     entry: InspectorMachineEntry;
     view: InspectorMachineView;
-    layout: InspectorLayoutResult;
+    baseline: InspectorLayoutResult;
+    live: InspectorLayoutResult;
   }[] = [];
 
   for (const entry of machines) {
@@ -830,13 +866,24 @@ function layoutAllMachines(
         machineOverrides.set(state, pos);
       }
     }
-    const layout = inspectorLayout(
+    // Baseline layout (without overrides) fixes the frame position and content
+    // offset, so dragging a node cannot shift the whole machine and break the
+    // 1:1 mapping between mouse motion and screen motion.
+    const baseline = inspectorLayout(
       view.description,
       view.initialStateType,
       view.dynamicEdges,
-      machineOverrides,
     );
-    laidOut.push({ entry, layout, view });
+    const live =
+      machineOverrides.size === 0
+        ? baseline
+        : inspectorLayout(
+            view.description,
+            view.initialStateType,
+            view.dynamicEdges,
+            machineOverrides,
+          );
+    laidOut.push({ baseline, entry, live, view });
   }
 
   return positionMachines(laidOut);
@@ -846,7 +893,8 @@ function positionMachines(
   laidOut: {
     entry: InspectorMachineEntry;
     view: InspectorMachineView;
-    layout: InspectorLayoutResult;
+    baseline: InspectorLayoutResult;
+    live: InspectorLayoutResult;
   }[],
 ): PositionedMachine[] {
   const result: PositionedMachine[] = [];
@@ -854,8 +902,9 @@ function positionMachines(
   let currentY = 0;
   let rowHeight = 0;
   for (const item of laidOut) {
-    const frameWidth = item.layout.width + FRAME_PADDING * 2;
-    const frameHeight = item.layout.height + FRAME_PADDING * 2 + TITLE_HEIGHT;
+    const frameWidth = item.baseline.width + FRAME_PADDING * 2;
+    const frameHeight =
+      item.baseline.height + FRAME_PADDING * 2 + TITLE_HEIGHT;
     if (currentX > 0 && currentX + frameWidth > TARGET_ROW_WIDTH) {
       currentX = 0;
       currentY += rowHeight + ROW_GAP;
@@ -863,9 +912,9 @@ function positionMachines(
     }
     const frameX = currentX;
     const frameY = currentY;
-    const contentOffsetX = frameX + FRAME_PADDING - item.layout.minX;
+    const contentOffsetX = frameX + FRAME_PADDING - item.baseline.minX;
     const contentOffsetY =
-      frameY + TITLE_HEIGHT + FRAME_PADDING - item.layout.minY;
+      frameY + TITLE_HEIGHT + FRAME_PADDING - item.baseline.minY;
     result.push({
       entry: item.entry,
       frame: {
@@ -874,7 +923,7 @@ function positionMachines(
         x: frameX,
         y: frameY,
       },
-      layout: item.layout,
+      layout: item.live,
       offset: { x: contentOffsetX, y: contentOffsetY },
       view: item.view,
     });
