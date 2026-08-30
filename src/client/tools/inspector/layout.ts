@@ -301,6 +301,12 @@ function routeEdge(
     const layout: InspectorLayoutEdge = withMeta(edge, {
       eventType: edge.eventType,
       from: edge.from,
+      geometry: {
+        cp1: { x: cp1X, y: startY },
+        cp2: { x: cp2X, y: endY },
+        source: { x: sourceX, y: startY },
+        target: { x: targetX, y: endY },
+      },
       labelWidth,
       labelX,
       labelY,
@@ -330,6 +336,12 @@ function routeEdge(
   const layout: InspectorLayoutEdge = withMeta(edge, {
     eventType: edge.eventType,
     from: edge.from,
+    geometry: {
+      cp1: { x: backSourceX, y: dip },
+      cp2: { x: backTargetX, y: dip },
+      source: { x: backSourceX, y: backSourceY },
+      target: { x: backTargetX, y: backTargetY },
+    },
     labelWidth,
     labelX,
     labelY,
@@ -367,6 +379,12 @@ function selfLoop(
   const layout: InspectorLayoutEdge = withMeta(edge, {
     eventType: edge.eventType,
     from: edge.from,
+    geometry: {
+      cp1: { x: startX + 20, y: startY - arcHeight },
+      cp2: { x: endX - 20, y: endY - arcHeight },
+      source: { x: startX, y: startY },
+      target: { x: endX, y: endY },
+    },
     labelWidth,
     labelX,
     labelY,
@@ -393,7 +411,7 @@ function withMeta(
     | "guards"
     | "isDynamic"
     | "returnSource"
-  >,
+  > & { geometry: InspectorLayoutEdge["geometry"] },
 ): InspectorLayoutEdge {
   return {
     ...base,

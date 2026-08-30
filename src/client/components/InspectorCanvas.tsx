@@ -636,6 +636,12 @@ function MachineGroup({
                   ...edge,
                   labelX: labelPosition.x,
                   labelY: labelPosition.y,
+                  path: reshapePathToLabel(
+                    edge.geometry,
+                    edge.labelX,
+                    edge.labelY,
+                    labelPosition,
+                  ),
                 };
           return (
             <DiagramEdge
@@ -1052,13 +1058,29 @@ function positionMachines(
       labelOverrides,
       item.entry.name,
     );
+    // Frame = union(baselineFrame, effective content in world coords + padding).
+    // The union keeps the original area covered so the frame only ever grows,
+    // never shrinks or "follows" a dragged node away from its origin.
+    const effectiveLeft = contentOffsetX + effective.minX - FRAME_PADDING;
+    const effectiveTop =
+      contentOffsetY + effective.minY - FRAME_PADDING - TITLE_HEIGHT;
+    const effectiveRight = contentOffsetX + effective.maxX + FRAME_PADDING;
+    const effectiveBottom = contentOffsetY + effective.maxY + FRAME_PADDING;
+    const frameLeft = Math.min(baselineFrameX, effectiveLeft);
+    const frameTop = Math.min(baselineFrameY, effectiveTop);
+    const frameRight = Math.max(
+      baselineFrameX + baselineFrameWidth,
+      effectiveRight,
+    );
+    const frameBottom = Math.max(
+      baselineFrameY + baselineFrameHeight,
+      effectiveBottom,
+    );
     const frame: Rect = {
-      height:
-        effective.maxY - effective.minY + FRAME_PADDING * 2 + TITLE_HEIGHT,
-      width: effective.maxX - effective.minX + FRAME_PADDING * 2,
-      x: contentOffsetX + effective.minX - FRAME_PADDING,
-      y:
-        contentOffsetY + effective.minY - FRAME_PADDING - TITLE_HEIGHT,
+      height: frameBottom - frameTop,
+      width: frameRight - frameLeft,
+      x: frameLeft,
+      y: frameTop,
     };
 
     result.push({
@@ -1146,4 +1168,34 @@ function viewBoxEqualsBounds(vb: ViewBox, bounds: ViewBox): boolean {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
+}
+
+/**
+ * Reshape a cubic bezier so that its midpoint (evaluated at t=0.5) matches the
+ * given `newLabel` position. Endpoints stay put; the control points are shifted
+ * uniformly by (4/3) × delta so that
+ *
+ *   B(0.5) = 0.125·source + 0.375·cp1 + 0.375·cp2 + 0.125·target
+ *
+ * moves by exactly `delta`. This keeps the arrow's tangent at each end steady
+ * while the arc bulges toward the dragged label.
+ */
+function reshapePathToLabel(
+  geometry: {
+    source: { x: number; y: number };
+    cp1: { x: number; y: number };
+    cp2: { x: number; y: number };
+    target: { x: number; y: number };
+  },
+  originalLabelX: number,
+  originalLabelY: number,
+  newLabel: { x: number; y: number },
+): string {
+  const dx = (newLabel.x - originalLabelX) * (4 / 3);
+  const dy = (newLabel.y - originalLabelY) * (4 / 3);
+  const cp1X = geometry.cp1.x + dx;
+  const cp1Y = geometry.cp1.y + dy;
+  const cp2X = geometry.cp2.x + dx;
+  const cp2Y = geometry.cp2.y + dy;
+  return `M ${geometry.source.x} ${geometry.source.y} C ${cp1X} ${cp1Y}, ${cp2X} ${cp2Y}, ${geometry.target.x} ${geometry.target.y}`;
 }

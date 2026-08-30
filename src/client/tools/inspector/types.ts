@@ -24,11 +24,19 @@ export type InspectorLayoutNode = {
   height: number;
 };
 
+export type InspectorEdgeGeometry = {
+  source: { x: number; y: number };
+  cp1: { x: number; y: number };
+  cp2: { x: number; y: number };
+  target: { x: number; y: number };
+};
+
 export type InspectorLayoutEdge = {
   from: string;
   to: string;
   eventType: string;
   path: string;
+  geometry: InspectorEdgeGeometry;
   labelX: number;
   labelY: number;
   labelWidth: number;
