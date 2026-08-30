@@ -1,7 +1,9 @@
 import type {
+  GuardCondition,
   InspectorLayoutEdge,
   InspectorLayoutResult,
   InspectorLearnedEdge,
+  MachineDescription,
 } from "./types.js";
 
 const NODE_WIDTH = 140;
@@ -10,21 +12,29 @@ const COLUMN_GAP = 80;
 const ROW_GAP = 40;
 const MARGIN = 24;
 
+type LogicalEdge = {
+  from: string;
+  to: string;
+  eventType: string;
+  branchIndex: number;
+  branchTotal: number;
+  guards: GuardCondition[];
+  isDynamic: boolean;
+};
+
 export function inspectorLayout(
-  states: string[],
-  edges: InspectorLearnedEdge[],
+  description: MachineDescription,
   initialState: string,
+  dynamicEdges: InspectorLearnedEdge[] = [],
 ): InspectorLayoutResult {
-  const stateSet = new Set(states);
-  const outgoing = new Map<string, InspectorLearnedEdge[]>();
-  for (const edge of edges) {
-    if (!stateSet.has(edge.from) || !stateSet.has(edge.to)) continue;
+  const states = Object.keys(description.states);
+  const logicalEdges = collectLogicalEdges(description, dynamicEdges);
+
+  const outgoing = new Map<string, LogicalEdge[]>();
+  for (const edge of logicalEdges) {
     const list = outgoing.get(edge.from);
-    if (list === undefined) {
-      outgoing.set(edge.from, [edge]);
-    } else {
-      list.push(edge);
-    }
+    if (list === undefined) outgoing.set(edge.from, [edge]);
+    else list.push(edge);
   }
 
   const ranks = assignRanks(states, outgoing, initialState);
@@ -53,7 +63,7 @@ export function inspectorLayout(
     .filter((id) => nodePositions.has(id))
     .map((id) => ({ id, ...nodePositions.get(id)! }));
 
-  const layoutEdges: InspectorLayoutEdge[] = edges
+  const layoutEdges: InspectorLayoutEdge[] = logicalEdges
     .map((edge) => routeEdge(edge, nodePositions))
     .filter((edge): edge is InspectorLayoutEdge => edge !== undefined);
 
@@ -64,9 +74,60 @@ export function inspectorLayout(
   return { edges: layoutEdges, height, nodes: layoutNodes, width };
 }
 
+function collectLogicalEdges(
+  description: MachineDescription,
+  dynamicEdges: InspectorLearnedEdge[],
+): LogicalEdge[] {
+  const edges: LogicalEdge[] = [];
+  const stateSet = new Set(Object.keys(description.states));
+
+  for (const state of Object.values(description.states)) {
+    for (const transition of state.transitions) {
+      const transitionBranches = transition.branches.filter(
+        (branch) => branch.kind === "transition" && branch.targetStateType !== null,
+      );
+      const total = transitionBranches.length;
+      transitionBranches.forEach((branch, index) => {
+        if (!stateSet.has(branch.targetStateType!)) return;
+        edges.push({
+          branchIndex: index,
+          branchTotal: total,
+          eventType: transition.eventType,
+          from: state.type,
+          guards: branch.guards,
+          isDynamic: false,
+          to: branch.targetStateType!,
+        });
+      });
+    }
+  }
+
+  for (const dyn of dynamicEdges) {
+    if (!stateSet.has(dyn.from) || !stateSet.has(dyn.to)) continue;
+    const alreadyStatic = edges.some(
+      (edge) =>
+        edge.from === dyn.from &&
+        edge.to === dyn.to &&
+        edge.eventType === dyn.eventType,
+    );
+    if (alreadyStatic) continue;
+    edges.push({
+      branchIndex: 0,
+      branchTotal: 1,
+      eventType: dyn.eventType,
+      from: dyn.from,
+      guards: [],
+      isDynamic: true,
+      to: dyn.to,
+    });
+  }
+
+  return edges;
+}
+
 function assignRanks(
   states: string[],
-  outgoing: Map<string, InspectorLearnedEdge[]>,
+  outgoing: Map<string, LogicalEdge[]>,
   initialState: string,
 ): Map<string, number> {
   const ranks = new Map<string, number>();
@@ -116,7 +177,7 @@ function groupByRank(
 }
 
 function routeEdge(
-  edge: InspectorLearnedEdge,
+  edge: LogicalEdge,
   positions: Map<
     string,
     { x: number; y: number; width: number; height: number }
@@ -127,7 +188,7 @@ function routeEdge(
   if (source === undefined || target === undefined) return undefined;
 
   if (edge.from === edge.to) {
-    return selfLoop(edge, source);
+    return withEdgeMeta(edge, selfLoop(edge, source));
   }
 
   const sourceX = source.x + source.width;
@@ -137,46 +198,57 @@ function routeEdge(
 
   const forward = targetX > sourceX;
 
+  // If the source state has multiple branches on the same event, fan out
+  // the vertical starting points so parallel edges don't overlap.
+  const laneOffset = laneOffsetFor(edge);
+
   if (forward) {
+    const startY = sourceY + laneOffset;
+    const endY = targetY + laneOffset;
     const dx = Math.max(40, (targetX - sourceX) / 2);
     const cp1X = sourceX + dx;
     const cp2X = targetX - dx;
-    const path = `M ${sourceX} ${sourceY} C ${cp1X} ${sourceY}, ${cp2X} ${targetY}, ${targetX} ${targetY}`;
+    const path = `M ${sourceX} ${startY} C ${cp1X} ${startY}, ${cp2X} ${endY}, ${targetX} ${endY}`;
     const labelX = bezierMid(sourceX, cp1X, cp2X, targetX);
-    const labelY = bezierMid(sourceY, sourceY, targetY, targetY);
-    return {
+    const labelY = bezierMid(startY, startY, endY, endY);
+    return withEdgeMeta(edge, {
       eventType: edge.eventType,
       from: edge.from,
       labelX,
       labelY,
       path,
       to: edge.to,
-    };
+    });
   }
 
-  // Backward edge: dip below both nodes.
-  const backSourceX = source.x + source.width / 2;
-  const backTargetX = target.x + target.width / 2;
+  const backSourceX = source.x + source.width / 2 + laneOffset * 4;
+  const backTargetX = target.x + target.width / 2 + laneOffset * 4;
   const backSourceY = source.y + source.height;
   const backTargetY = target.y + target.height;
-  const dip = Math.max(backSourceY, backTargetY) + 60;
+  const dip = Math.max(backSourceY, backTargetY) + 60 + Math.abs(laneOffset) * 6;
   const path = `M ${backSourceX} ${backSourceY} C ${backSourceX} ${dip}, ${backTargetX} ${dip}, ${backTargetX} ${backTargetY}`;
   const labelX = (backSourceX + backTargetX) / 2;
   const labelY = dip - 4;
-  return {
+  return withEdgeMeta(edge, {
     eventType: edge.eventType,
     from: edge.from,
     labelX,
     labelY,
     path,
     to: edge.to,
-  };
+  });
+}
+
+function laneOffsetFor(edge: LogicalEdge): number {
+  if (edge.branchTotal <= 1) return 0;
+  const centered = edge.branchIndex - (edge.branchTotal - 1) / 2;
+  return centered * 12;
 }
 
 function selfLoop(
-  edge: InspectorLearnedEdge,
+  edge: LogicalEdge,
   node: { x: number; y: number; width: number; height: number },
-): InspectorLayoutEdge {
+): Omit<InspectorLayoutEdge, "branchIndex" | "branchTotal" | "guards" | "isDynamic"> {
   const startX = node.x + node.width * 0.7;
   const startY = node.y;
   const endX = node.x + node.width * 0.3;
@@ -190,6 +262,22 @@ function selfLoop(
     labelY: startY - arcHeight + 4,
     path,
     to: edge.to,
+  };
+}
+
+function withEdgeMeta(
+  edge: LogicalEdge,
+  base: Omit<
+    InspectorLayoutEdge,
+    "branchIndex" | "branchTotal" | "guards" | "isDynamic"
+  >,
+): InspectorLayoutEdge {
+  return {
+    ...base,
+    branchIndex: edge.branchIndex,
+    branchTotal: edge.branchTotal,
+    guards: edge.guards,
+    isDynamic: edge.isDynamic,
   };
 }
 

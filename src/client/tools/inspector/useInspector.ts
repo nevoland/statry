@@ -1,19 +1,24 @@
-import { useEffect, useRef, useState } from "../../dependencies.js";
+import { useEffect, useMemo, useRef, useState } from "../../dependencies.js";
 
+import { analyzeDefinition } from "./analyze.js";
 import {
+  branchKey,
   edgeKey,
   type AnyStateMachine,
   type InspectorLearnedEdge,
   type InspectorMachineEntry,
   type InspectorRuntimeEvent,
+  type MachineDescription,
 } from "./types.js";
 
 const FLASH_DURATION_MS = 600;
 
 export type InspectorMachineView = {
+  description: MachineDescription;
   currentStateType: string;
   initialStateType: string;
-  edges: InspectorLearnedEdge[];
+  observedCounts: Map<string, number>;
+  dynamicEdges: InspectorLearnedEdge[];
   flashEdgeKey: string | null;
 };
 
@@ -23,19 +28,30 @@ export type InspectorState = {
 };
 
 export function useInspector(entries: InspectorMachineEntry[]): InspectorState {
+  const descriptionsRef = useRef<Map<AnyStateMachine, MachineDescription>>(
+    new Map(),
+  );
+
+  const initialViews = useMemo(() => {
+    const views = new Map<AnyStateMachine, InspectorMachineView>();
+    for (const { machine } of entries) {
+      const description = getDescription(descriptionsRef.current, machine);
+      views.set(machine, {
+        currentStateType: machine.state.type,
+        description,
+        dynamicEdges: [],
+        flashEdgeKey: null,
+        initialStateType: machine.state.type,
+        observedCounts: new Map(),
+      });
+    }
+    return views;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const [state, setState] = useState<InspectorState>(() => ({
     events: [],
-    views: new Map(
-      entries.map(({ machine }) => [
-        machine,
-        {
-          currentStateType: machine.state.type,
-          edges: [],
-          flashEdgeKey: null,
-          initialStateType: machine.state.type,
-        },
-      ]),
-    ),
+    views: initialViews,
   }));
 
   const flashTimersRef = useRef<Map<AnyStateMachine, number>>(new Map());
@@ -49,9 +65,11 @@ export function useInspector(entries: InspectorMachineEntry[]): InspectorState {
         mutated = true;
         views.set(machine, {
           currentStateType: machine.state.type,
-          edges: [],
+          description: getDescription(descriptionsRef.current, machine),
+          dynamicEdges: [],
           flashEdgeKey: null,
           initialStateType: machine.state.type,
+          observedCounts: new Map(),
         });
       }
       return mutated ? { ...previous, views } : previous;
@@ -65,14 +83,13 @@ export function useInspector(entries: InspectorMachineEntry[]): InspectorState {
         const from = event.previousState.type;
         const to = event.state.type;
         const eventType = event.trigger.type;
-        const key = edgeKey(from, to, eventType);
         setState((previous) =>
-          updateStateTransition(previous, machine, from, to, eventType, key, event),
+          updateStateTransition(previous, machine, from, to, eventType, event),
         );
 
         const timers = flashTimersRef.current;
-        const existingTimer = timers.get(machine);
-        if (existingTimer !== undefined) clearTimeout(existingTimer);
+        const existing = timers.get(machine);
+        if (existing !== undefined) clearTimeout(existing);
         const timer = window.setTimeout(() => {
           timers.delete(machine);
           setState((previous) => clearFlash(previous, machine));
@@ -117,14 +134,23 @@ export function useInspector(entries: InspectorMachineEntry[]): InspectorState {
 
     return () => {
       for (const cleanup of cleanups) cleanup();
-      for (const timer of flashTimersRef.current.values()) {
-        clearTimeout(timer);
-      }
+      for (const timer of flashTimersRef.current.values()) clearTimeout(timer);
       flashTimersRef.current.clear();
     };
   }, [entries]);
 
   return state;
+}
+
+function getDescription(
+  cache: Map<AnyStateMachine, MachineDescription>,
+  machine: AnyStateMachine,
+): MachineDescription {
+  const existing = cache.get(machine);
+  if (existing !== undefined) return existing;
+  const description = analyzeDefinition(machine.definition);
+  cache.set(machine, description);
+  return description;
 }
 
 function updateStateTransition(
@@ -133,29 +159,50 @@ function updateStateTransition(
   from: string,
   to: string,
   eventType: string,
-  key: string,
   event: InspectorRuntimeEvent,
 ): InspectorState {
   const view = previous.views.get(machine);
   if (view === undefined) {
     return { ...previous, events: [...previous.events, event] };
   }
-  const existing = view.edges.find(
-    (edge) =>
-      edge.from === from && edge.to === to && edge.eventType === eventType,
-  );
-  const nextEdges = existing
-    ? view.edges.map((edge) =>
-        edge === existing ? { ...edge, count: edge.count + 1 } : edge,
-      )
-    : [...view.edges, { count: 1, eventType, from, to }];
+
+  const state = view.description.states[from];
+  const transition = state?.transitions.find((t) => t.eventType === eventType);
+  const matchingBranchIndices: number[] = [];
+  transition?.branches.forEach((branch, index) => {
+    if (branch.kind === "transition" && branch.targetStateType === to) {
+      matchingBranchIndices.push(index);
+    }
+  });
+
+  const observedCounts = new Map(view.observedCounts);
+  for (const index of matchingBranchIndices) {
+    const key = branchKey(from, eventType, index);
+    observedCounts.set(key, (observedCounts.get(key) ?? 0) + 1);
+  }
+
+  let dynamicEdges = view.dynamicEdges;
+  if (matchingBranchIndices.length === 0) {
+    const existing = dynamicEdges.find(
+      (edge) =>
+        edge.from === from && edge.to === to && edge.eventType === eventType,
+    );
+    dynamicEdges = existing
+      ? dynamicEdges.map((edge) =>
+          edge === existing ? { ...edge, count: edge.count + 1 } : edge,
+        )
+      : [...dynamicEdges, { count: 1, eventType, from, to }];
+  }
+
   const nextView: InspectorMachineView = {
     ...view,
     currentStateType: to,
-    edges: nextEdges,
-    flashEdgeKey: key,
+    dynamicEdges,
+    flashEdgeKey: edgeKey(from, to, eventType),
+    observedCounts,
   };
   const views = new Map(previous.views).set(machine, nextView);
+
   return {
     events: [...previous.events, event],
     views,

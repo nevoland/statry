@@ -87,15 +87,15 @@ export function Inspector({ machines }: InspectorProps) {
           return (
             <InspectorDiagram
               currentStateType={view.currentStateType}
-              edges={view.edges}
+              description={view.description}
+              dynamicEdges={view.dynamicEdges}
               flashEdgeKey={view.flashEdgeKey}
               highlightedEdgeKey={highlight.edgeKey}
               ignoredHighlightState={highlight.ignoredState}
               initialStateType={view.initialStateType}
               key={name}
               name={name}
-              onHoverEdge={undefined}
-              states={Object.keys(machine.definition)}
+              observedCounts={view.observedCounts}
             />
           );
         })}

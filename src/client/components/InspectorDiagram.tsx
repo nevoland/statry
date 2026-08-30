@@ -1,39 +1,43 @@
 import { clsx, useId, useMemo } from "../dependencies.js";
 import { inspectorLayout } from "../tools/inspector/layout.js";
 import {
+  branchKey,
   edgeKey,
-  type InspectorLearnedEdge,
+  type GuardCondition,
   type InspectorLayoutEdge,
+  type InspectorLearnedEdge,
+  type MachineDescription,
 } from "../tools/inspector/types.js";
 
 export type InspectorDiagramProps = {
   name: string;
-  states: string[];
-  edges: InspectorLearnedEdge[];
+  description: MachineDescription;
   initialStateType: string;
   currentStateType: string;
+  observedCounts: Map<string, number>;
+  dynamicEdges: InspectorLearnedEdge[];
   flashEdgeKey: string | null;
   highlightedEdgeKey: string | null;
   ignoredHighlightState: string | null;
-  onHoverEdge?: (key: string | null) => void;
 };
 
 export function InspectorDiagram({
   name,
-  states,
-  edges,
+  description,
   initialStateType,
   currentStateType,
+  observedCounts,
+  dynamicEdges,
   flashEdgeKey,
   highlightedEdgeKey,
   ignoredHighlightState,
-  onHoverEdge,
 }: InspectorDiagramProps) {
   const arrowId = useId();
   const arrowHighlightId = useId();
+  const arrowMutedId = useId();
   const layout = useMemo(
-    () => inspectorLayout(states, edges, initialStateType),
-    [states, edges, initialStateType],
+    () => inspectorLayout(description, initialStateType, dynamicEdges),
+    [description, initialStateType, dynamicEdges],
   );
 
   return (
@@ -58,6 +62,21 @@ export function InspectorDiagram({
             <path d="M 0 0 L 8 3 L 0 6 z" fill="rgb(100 116 139)" />
           </marker>
           <marker
+            id={arrowMutedId}
+            markerHeight="6"
+            markerWidth="8"
+            orient="auto-start-reverse"
+            refX="7"
+            refY="3"
+            viewBox="0 0 8 6"
+          >
+            <path
+              d="M 0 0 L 8 3 L 0 6 z"
+              fill="rgb(100 116 139)"
+              opacity="0.4"
+            />
+          </marker>
+          <marker
             id={arrowHighlightId}
             markerHeight="6"
             markerWidth="8"
@@ -73,11 +92,18 @@ export function InspectorDiagram({
           <DiagramEdge
             arrowHighlightId={arrowHighlightId}
             arrowId={arrowId}
+            arrowMutedId={arrowMutedId}
             edge={edge}
             flashEdgeKey={flashEdgeKey}
             highlightedEdgeKey={highlightedEdgeKey}
-            key={edgeKey(edge.from, edge.to, edge.eventType)}
-            onHoverEdge={onHoverEdge}
+            key={`${edgeKey(edge.from, edge.to, edge.eventType)}#${edge.branchIndex}`}
+            observedCount={
+              edge.isDynamic
+                ? Infinity
+                : (observedCounts.get(
+                    branchKey(edge.from, edge.eventType, edge.branchIndex),
+                  ) ?? 0)
+            }
           />
         ))}
         {layout.nodes.map((node) => (
@@ -136,27 +162,33 @@ function DiagramNode({ node, isCurrent, isIgnoredHighlight }: DiagramNodeProps) 
 type DiagramEdgeProps = {
   edge: InspectorLayoutEdge;
   arrowId: string;
+  arrowMutedId: string;
   arrowHighlightId: string;
   flashEdgeKey: string | null;
   highlightedEdgeKey: string | null;
-  onHoverEdge?: (key: string | null) => void;
+  observedCount: number;
 };
 
 function DiagramEdge({
   edge,
   arrowId,
+  arrowMutedId,
   arrowHighlightId,
   flashEdgeKey,
   highlightedEdgeKey,
-  onHoverEdge,
+  observedCount,
 }: DiagramEdgeProps) {
   const key = edgeKey(edge.from, edge.to, edge.eventType);
   const isFlashing = key === flashEdgeKey;
   const isHighlighted = key === highlightedEdgeKey;
   const active = isFlashing || isHighlighted;
+  const isUnobserved = !active && !edge.isDynamic && observedCount === 0;
   const strokeColor = active ? "rgb(96 165 250)" : "rgb(100 116 139)";
-  const marker = active ? arrowHighlightId : arrowId;
-  const labelWidth = Math.max(28, edge.eventType.length * 7 + 12);
+  const marker = active ? arrowHighlightId : isUnobserved ? arrowMutedId : arrowId;
+  const showDiamond = edge.branchTotal > 1;
+  const label = formatEdgeLabel(edge.eventType, edge.guards);
+  const guardTooltip = formatGuardTooltip(edge.guards);
+  const labelWidth = Math.max(28, label.length * 7 + 12 + (showDiamond ? 18 : 0));
   const labelHeight = 18;
 
   return (
@@ -165,14 +197,15 @@ function DiagramEdge({
         "cursor-pointer",
         isFlashing && "inspector-edge-flash",
       )}
-      onMouseEnter={onHoverEdge ? () => onHoverEdge(key) : undefined}
-      onMouseLeave={onHoverEdge ? () => onHoverEdge(null) : undefined}
+      opacity={isUnobserved ? 0.4 : 1}
     >
+      <title>{guardTooltip}</title>
       <path
         d={edge.path}
         fill="none"
         marker-end={`url(#${marker})`}
         stroke={strokeColor}
+        stroke-dasharray={edge.isDynamic ? "4 4" : undefined}
         stroke-width={active ? 2 : 1.25}
       />
       <rect
@@ -185,18 +218,58 @@ function DiagramEdge({
         x={edge.labelX - labelWidth / 2}
         y={edge.labelY - labelHeight / 2}
       />
+      {showDiamond && (
+        <g
+          transform={`translate(${edge.labelX - labelWidth / 2 + 12}, ${edge.labelY}) rotate(45)`}
+        >
+          <rect
+            fill={active ? "rgb(96 165 250)" : "rgb(51 65 85)"}
+            height={10}
+            width={10}
+            x={-5}
+            y={-5}
+          />
+        </g>
+      )}
+      {showDiamond && (
+        <text
+          class="fill-slate-950"
+          dominant-baseline="middle"
+          font-size="8"
+          font-weight="700"
+          text-anchor="middle"
+          x={edge.labelX - labelWidth / 2 + 12}
+          y={edge.labelY + 1}
+        >
+          {edge.branchIndex + 1}
+        </text>
+      )}
       <text
-        class={clsx(
-          active ? "fill-blue-300" : "fill-slate-300",
-        )}
+        class={clsx(active ? "fill-blue-300" : "fill-slate-300")}
         dominant-baseline="middle"
         font-size="11"
         text-anchor="middle"
-        x={edge.labelX}
+        x={edge.labelX + (showDiamond ? 9 : 0)}
         y={edge.labelY + 1}
       >
-        {edge.eventType}
+        {label}
       </text>
     </g>
   );
+}
+
+function formatEdgeLabel(eventType: string, guards: GuardCondition[]): string {
+  if (guards.length === 0) return eventType;
+  if (guards.every((g) => g.negated)) return `${eventType} ELSE`;
+  const parts = guards.map((g) => (g.negated ? `!(${g.source})` : g.source));
+  const joined = parts.join(" ∧ ");
+  const truncated = joined.length > 24 ? joined.slice(0, 22) + "…" : joined;
+  return `${eventType} IF ${truncated}`;
+}
+
+function formatGuardTooltip(guards: GuardCondition[]): string {
+  if (guards.length === 0) return "";
+  return guards
+    .map((g) => (g.negated ? `NOT (${g.source})` : g.source))
+    .join(" AND ");
 }

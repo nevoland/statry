@@ -31,6 +31,10 @@ export type InspectorLayoutEdge = {
   path: string;
   labelX: number;
   labelY: number;
+  branchIndex: number;
+  branchTotal: number;
+  guards: GuardCondition[];
+  isDynamic: boolean;
 };
 
 export type InspectorLayoutResult = {
@@ -43,3 +47,40 @@ export type InspectorLayoutResult = {
 export function edgeKey(from: string, to: string, eventType: string): string {
   return `${from}->${to}:${eventType}`;
 }
+
+export function branchKey(
+  stateType: string,
+  eventType: string,
+  branchIndex: number,
+): string {
+  return `${stateType}:${eventType}:${branchIndex}`;
+}
+
+export type MachineDescription = {
+  states: Record<string, StateDescription>;
+};
+
+export type StateDescription = {
+  type: string;
+  hasEnter: boolean;
+  eventTypes: string[];
+  transitions: TransitionDescription[];
+  parseError?: string;
+};
+
+export type TransitionDescription = {
+  eventType: string;
+  branches: TransitionBranch[];
+};
+
+export type TransitionBranch = {
+  kind: "transition" | "self" | "unknown";
+  targetStateType: string | null;
+  guards: GuardCondition[];
+  returnSource: string;
+};
+
+export type GuardCondition = {
+  source: string;
+  negated: boolean;
+};
