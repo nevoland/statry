@@ -264,6 +264,8 @@ function groupByRank(
   return columns;
 }
 
+const CORNER_RADIUS = 8;
+
 function routeEdge(
   edge: LogicalEdge,
   positions: Map<
@@ -281,80 +283,82 @@ function routeEdge(
     return selfLoop(edge, source, labelWidth);
   }
 
-  const sourceX = source.x + source.width;
-  const sourceY = source.y + source.height / 2;
-  const targetX = target.x;
-  const targetY = target.y + target.height / 2;
-
   const lane = laneOffsetFor(edge);
-  const forward = targetX > sourceX;
+  const forward = target.x > source.x + source.width;
 
   if (forward) {
-    const startY = sourceY + lane;
-    const endY = targetY + lane;
-    const dx = Math.max(40, (targetX - sourceX) / 2);
-    const cp1X = sourceX + dx;
-    const cp2X = targetX - dx;
-    const path = `M ${sourceX} ${startY} C ${cp1X} ${startY}, ${cp2X} ${endY}, ${targetX} ${endY}`;
-    const labelX = bezierMid(sourceX, cp1X, cp2X, targetX);
-    const labelY = bezierMid(startY, startY, endY, endY);
-    const layout: InspectorLayoutEdge = withMeta(edge, {
-      eventType: edge.eventType,
-      from: edge.from,
-      geometry: {
-        cp1: { x: cp1X, y: startY },
-        cp2: { x: cp2X, y: endY },
-        source: { x: sourceX, y: startY },
-        target: { x: targetX, y: endY },
-      },
-      labelWidth,
-      labelX,
-      labelY,
-      path,
-      to: edge.to,
-    });
-    const bounds = {
-      maxX: Math.max(sourceX, targetX, labelX + labelWidth / 2),
-      maxY: Math.max(startY, endY, labelY + LABEL_HEIGHT / 2),
-      minX: Math.min(sourceX, targetX, labelX - labelWidth / 2),
-      minY: Math.min(startY, endY, labelY - LABEL_HEIGHT / 2),
-    };
-    return { bounds, layout };
+    return routeForward(edge, source, target, lane, labelWidth);
+  }
+  return routeBack(edge, source, target, lane, labelWidth);
+}
+
+function routeForward(
+  edge: LogicalEdge,
+  source: { x: number; y: number; width: number; height: number },
+  target: { x: number; y: number; width: number; height: number },
+  lane: number,
+  labelWidth: number,
+): EdgeRouting {
+  const sourceX = source.x + source.width;
+  const sourceY = source.y + source.height / 2 + lane;
+  const targetX = target.x;
+  const targetY = target.y + target.height / 2 + lane;
+
+  let waypoints: Array<{ x: number; y: number }>;
+  let labelX: number;
+  let labelY: number;
+
+  if (Math.abs(sourceY - targetY) < 1) {
+    // Straight horizontal — one segment.
+    waypoints = [
+      { x: sourceX, y: sourceY },
+      { x: targetX, y: targetY },
+    ];
+    labelX = (sourceX + targetX) / 2;
+    labelY = sourceY;
+  } else {
+    // Z-shape with two turns. Offset the mid-column X by lane so parallel Zs
+    // don't overlap their vertical segments.
+    const midX = (sourceX + targetX) / 2 + lane;
+    waypoints = [
+      { x: sourceX, y: sourceY },
+      { x: midX, y: sourceY },
+      { x: midX, y: targetY },
+      { x: targetX, y: targetY },
+    ];
+    labelX = midX;
+    labelY = (sourceY + targetY) / 2;
   }
 
-  // Backward edge — dip below both nodes. Stack the dip depth by lane index
-  // so parallel back-edges get distinct labels; also fan the source/target X
-  // by the signed lane so the curves themselves don't overlap.
+  const path = orthogonalPath(waypoints);
+  return buildEdgeRouting(edge, waypoints, path, labelX, labelY, labelWidth);
+}
+
+function routeBack(
+  edge: LogicalEdge,
+  source: { x: number; y: number; width: number; height: number },
+  target: { x: number; y: number; width: number; height: number },
+  lane: number,
+  labelWidth: number,
+): EdgeRouting {
+  // Backward edge — U-shape dipping below both nodes. Stack the dip depth by
+  // lane index so parallel back-edges get distinct labels; also fan the
+  // source/target X by the signed lane so the curves themselves don't overlap.
   const backSourceX = source.x + source.width / 2 + lane * 4;
   const backTargetX = target.x + target.width / 2 + lane * 4;
   const backSourceY = source.y + source.height;
   const backTargetY = target.y + target.height;
   const dip = Math.max(backSourceY, backTargetY) + 60 + edge.laneIndex * 22;
-  const path = `M ${backSourceX} ${backSourceY} C ${backSourceX} ${dip}, ${backTargetX} ${dip}, ${backTargetX} ${backTargetY}`;
+  const waypoints = [
+    { x: backSourceX, y: backSourceY },
+    { x: backSourceX, y: dip },
+    { x: backTargetX, y: dip },
+    { x: backTargetX, y: backTargetY },
+  ];
+  const path = orthogonalPath(waypoints);
   const labelX = (backSourceX + backTargetX) / 2;
-  const labelY = dip - 4;
-  const layout: InspectorLayoutEdge = withMeta(edge, {
-    eventType: edge.eventType,
-    from: edge.from,
-    geometry: {
-      cp1: { x: backSourceX, y: dip },
-      cp2: { x: backTargetX, y: dip },
-      source: { x: backSourceX, y: backSourceY },
-      target: { x: backTargetX, y: backTargetY },
-    },
-    labelWidth,
-    labelX,
-    labelY,
-    path,
-    to: edge.to,
-  });
-  const bounds = {
-    maxX: Math.max(backSourceX, backTargetX, labelX + labelWidth / 2),
-    maxY: dip + LABEL_HEIGHT / 2,
-    minX: Math.min(backSourceX, backTargetX, labelX - labelWidth / 2),
-    minY: Math.min(backSourceY, backTargetY, labelY - LABEL_HEIGHT / 2),
-  };
-  return { bounds, layout };
+  const labelY = dip;
+  return buildEdgeRouting(edge, waypoints, path, labelX, labelY, labelWidth);
 }
 
 function laneOffsetFor(edge: LogicalEdge): number {
@@ -373,31 +377,91 @@ function selfLoop(
   const endX = node.x + node.width * 0.3;
   const endY = node.y;
   const arcHeight = 36 + edge.laneIndex * 22;
-  const path = `M ${startX} ${startY} C ${startX + 20} ${startY - arcHeight}, ${endX - 20} ${endY - arcHeight}, ${endX} ${endY}`;
+  const top = startY - arcHeight;
+  const waypoints = [
+    { x: startX, y: startY },
+    { x: startX, y: top },
+    { x: endX, y: top },
+    { x: endX, y: endY },
+  ];
+  const path = orthogonalPath(waypoints);
   const labelX = node.x + node.width / 2;
-  const labelY = startY - arcHeight + 4;
+  const labelY = top;
+  return buildEdgeRouting(edge, waypoints, path, labelX, labelY, labelWidth);
+}
+
+function buildEdgeRouting(
+  edge: LogicalEdge,
+  waypoints: Array<{ x: number; y: number }>,
+  path: string,
+  labelX: number,
+  labelY: number,
+  labelWidth: number,
+): EdgeRouting {
   const layout: InspectorLayoutEdge = withMeta(edge, {
     eventType: edge.eventType,
     from: edge.from,
-    geometry: {
-      cp1: { x: startX + 20, y: startY - arcHeight },
-      cp2: { x: endX - 20, y: endY - arcHeight },
-      source: { x: startX, y: startY },
-      target: { x: endX, y: endY },
-    },
+    geometry: { waypoints },
     labelWidth,
     labelX,
     labelY,
     path,
     to: edge.to,
   });
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const point of waypoints) {
+    if (point.x < minX) minX = point.x;
+    if (point.x > maxX) maxX = point.x;
+    if (point.y < minY) minY = point.y;
+    if (point.y > maxY) maxY = point.y;
+  }
   const bounds = {
-    maxX: Math.max(startX, labelX + labelWidth / 2),
-    maxY: Math.max(startY, labelY + LABEL_HEIGHT / 2),
-    minX: Math.min(endX, labelX - labelWidth / 2),
-    minY: Math.min(startY - arcHeight, labelY - LABEL_HEIGHT / 2),
+    maxX: Math.max(maxX, labelX + labelWidth / 2),
+    maxY: Math.max(maxY, labelY + LABEL_HEIGHT / 2),
+    minX: Math.min(minX, labelX - labelWidth / 2),
+    minY: Math.min(minY, labelY - LABEL_HEIGHT / 2),
   };
   return { bounds, layout };
+}
+
+/**
+ * Emit an SVG path for an orthogonal polyline with rounded corners of radius
+ * `CORNER_RADIUS` at each interior waypoint. Consecutive waypoints must define
+ * axis-aligned segments (i.e. share either an x or a y coordinate).
+ */
+export function orthogonalPath(
+  waypoints: Array<{ x: number; y: number }>,
+): string {
+  if (waypoints.length < 2) return "";
+  const first = waypoints[0]!;
+  let d = `M ${first.x} ${first.y}`;
+  for (let i = 1; i < waypoints.length - 1; i++) {
+    const prev = waypoints[i - 1]!;
+    const curr = waypoints[i]!;
+    const next = waypoints[i + 1]!;
+    const inLen = Math.hypot(curr.x - prev.x, curr.y - prev.y);
+    const outLen = Math.hypot(next.x - curr.x, next.y - curr.y);
+    if (inLen === 0 || outLen === 0) {
+      d += ` L ${curr.x} ${curr.y}`;
+      continue;
+    }
+    const r = Math.min(CORNER_RADIUS, inLen / 2, outLen / 2);
+    const inX = (curr.x - prev.x) / inLen;
+    const inY = (curr.y - prev.y) / inLen;
+    const outX = (next.x - curr.x) / outLen;
+    const outY = (next.y - curr.y) / outLen;
+    const preX = curr.x - inX * r;
+    const preY = curr.y - inY * r;
+    const postX = curr.x + outX * r;
+    const postY = curr.y + outY * r;
+    d += ` L ${preX} ${preY} Q ${curr.x} ${curr.y} ${postX} ${postY}`;
+  }
+  const last = waypoints[waypoints.length - 1]!;
+  d += ` L ${last.x} ${last.y}`;
+  return d;
 }
 
 function withMeta(
@@ -446,6 +510,3 @@ export function formatEdgeLabel(edge: {
   return `${eventType} IF ${truncated}`;
 }
 
-function bezierMid(p0: number, p1: number, p2: number, p3: number): number {
-  return 0.125 * p0 + 0.375 * p1 + 0.375 * p2 + 0.125 * p3;
-}

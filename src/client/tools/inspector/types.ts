@@ -25,10 +25,13 @@ export type InspectorLayoutNode = {
 };
 
 export type InspectorEdgeGeometry = {
-  source: { x: number; y: number };
-  cp1: { x: number; y: number };
-  cp2: { x: number; y: number };
-  target: { x: number; y: number };
+  /**
+   * Ordered list of waypoints joined by axis-aligned segments (horizontal or
+   * vertical) with rounded corners. First entry is the source-side dock, last
+   * entry is the target-side dock; the arrowhead points along the tangent of
+   * the final segment.
+   */
+  waypoints: Array<{ x: number; y: number }>;
 };
 
 export type InspectorLayoutEdge = {

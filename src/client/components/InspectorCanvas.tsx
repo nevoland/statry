@@ -96,7 +96,18 @@ type LabelDrag = {
   onClickIfNotMoved: () => void;
 };
 
-type DragState = NodeDrag | PanDrag | LabelDrag;
+type MachineDrag = {
+  kind: "machine";
+  machineName: string;
+  startClientX: number;
+  startClientY: number;
+  initialX: number;
+  initialY: number;
+  scaleX: number;
+  scaleY: number;
+};
+
+type DragState = NodeDrag | PanDrag | LabelDrag | MachineDrag;
 
 type PopoverState = {
   key: string;
@@ -133,6 +144,9 @@ export function InspectorCanvas({
   const [labelOverrides, setLabelOverrides] = useState<
     Map<string, { x: number; y: number }>
   >(() => new Map());
+  const [machineOffsets, setMachineOffsets] = useState<
+    Map<string, { x: number; y: number }>
+  >(() => new Map());
   const [viewBox, setViewBox] = useState<ViewBox | null>(null);
   const [drag, setDrag] = useState<DragState | null>(null);
   const [popover, setPopover] = useState<PopoverState | null>(null);
@@ -152,6 +166,7 @@ export function InspectorCanvas({
     setPopover(null);
     setOverrides(new Map());
     setLabelOverrides(new Map());
+    setMachineOffsets(new Map());
     // Only reset when the set of machines changes, not on every override tweak.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [machineKey]);
@@ -185,6 +200,18 @@ export function InspectorCanvas({
             minX: drag.initialMinX - dx,
             minY: drag.initialMinY - dy,
           };
+        });
+        return;
+      }
+      if (drag.kind === "machine") {
+        hasMoved = true;
+        setMachineOffsets((previous) => {
+          const next = new Map(previous);
+          next.set(drag.machineName, {
+            x: drag.initialX + dx,
+            y: drag.initialY + dy,
+          });
+          return next;
         });
         return;
       }
@@ -387,6 +414,28 @@ export function InspectorCanvas({
     });
   };
 
+  const onMachinePointerDown = (
+    machineName: string,
+    event: PointerEvent,
+  ) => {
+    if (event.button !== 0) return;
+    event.stopPropagation();
+    event.preventDefault();
+    const existing = machineOffsets.get(machineName) ?? { x: 0, y: 0 };
+    const { scaleX, scaleY } = getScale();
+    setDrag({
+      initialX: existing.x,
+      initialY: existing.y,
+      kind: "machine",
+      machineName,
+      scaleX,
+      scaleY,
+      startClientX: event.clientX,
+      startClientY: event.clientY,
+    });
+    setPopover(null);
+  };
+
   const onLabelPointerDown = (
     machineName: string,
     edge: InspectorLayoutEdge,
@@ -418,6 +467,7 @@ export function InspectorCanvas({
   const resetView = () => {
     setOverrides(new Map());
     setLabelOverrides(new Map());
+    setMachineOffsets(new Map());
     setViewBox(boundsToViewBox(contentBounds));
     setPopover(null);
   };
@@ -425,6 +475,7 @@ export function InspectorCanvas({
   const hasCustomView =
     overrides.size > 0 ||
     labelOverrides.size > 0 ||
+    machineOffsets.size > 0 ||
     (viewBox !== null && !viewBoxEqualsBounds(viewBox, contentBounds));
 
   const cursorClass = drag?.kind === "pan" ? "cursor-grabbing" : "cursor-grab";
@@ -509,6 +560,7 @@ export function InspectorCanvas({
         </defs>
         {positioned.map((pm) => {
           const highlight = resolveHighlight(pm.entry.machine);
+          const machineOffset = machineOffsets.get(pm.entry.name);
           return (
             <MachineGroup
               arrowHighlightId={arrowHighlightId}
@@ -517,11 +569,18 @@ export function InspectorCanvas({
               flashEdgeKey={pm.view.flashEdgeKey}
               highlightedEdgeKey={highlight.edgeKey}
               ignoredHighlightState={highlight.ignoredState}
+              isDraggingMachine={
+                drag?.kind === "machine" && drag.machineName === pm.entry.name
+              }
               key={pm.entry.name}
               labelOverrides={labelOverrides}
+              machineOffset={machineOffset ?? { x: 0, y: 0 }}
               observedCounts={pm.view.observedCounts}
               onLabelPointerDown={(edge, event) =>
                 onLabelPointerDown(pm.entry.name, edge, event)
+              }
+              onMachinePointerDown={(event) =>
+                onMachinePointerDown(pm.entry.name, event)
               }
               onNodePointerDown={(node, event) =>
                 onNodePointerDown(pm.entry.name, node, event)
@@ -575,6 +634,8 @@ type MachineGroupProps = {
   arrowMutedId: string;
   arrowHighlightId: string;
   draggingOverrideKey: NodeOverrideKey | null;
+  isDraggingMachine: boolean;
+  machineOffset: { x: number; y: number };
   labelOverrides: Map<string, { x: number; y: number }>;
   onNodePointerDown: (
     node: { id: string; x: number; y: number },
@@ -584,6 +645,7 @@ type MachineGroupProps = {
     edge: InspectorLayoutEdge,
     event: PointerEvent,
   ) => void;
+  onMachinePointerDown: (event: PointerEvent) => void;
 };
 
 function MachineGroup({
@@ -597,15 +659,23 @@ function MachineGroup({
   arrowMutedId,
   arrowHighlightId,
   draggingOverrideKey,
+  isDraggingMachine,
+  machineOffset,
   labelOverrides,
   onNodePointerDown,
   onLabelPointerDown,
+  onMachinePointerDown,
 }: MachineGroupProps) {
   const { entry, layout, offset, frame } = positioned;
+  const frameCursor = isDraggingMachine ? "cursor-grabbing" : "cursor-grab";
 
   return (
-    <g>
+    <g
+      onPointerDown={onMachinePointerDown}
+      transform={`translate(${machineOffset.x}, ${machineOffset.y})`}
+    >
       <rect
+        class={frameCursor}
         fill="rgb(2 6 23 / 0.6)"
         height={frame.height}
         rx={10}
@@ -616,7 +686,7 @@ function MachineGroup({
         y={frame.y}
       />
       <text
-        class="pointer-events-none fill-slate-500 select-none"
+        class={clsx("fill-slate-500 select-none", frameCursor)}
         font-size="11"
         font-weight="600"
         letter-spacing="0.08em"
@@ -636,12 +706,6 @@ function MachineGroup({
                   ...edge,
                   labelX: labelPosition.x,
                   labelY: labelPosition.y,
-                  path: reshapePathToLabel(
-                    edge.geometry,
-                    edge.labelX,
-                    edge.labelY,
-                    labelPosition,
-                  ),
                 };
           return (
             <DiagramEdge
@@ -1168,34 +1232,4 @@ function viewBoxEqualsBounds(vb: ViewBox, bounds: ViewBox): boolean {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
-}
-
-/**
- * Reshape a cubic bezier so that its midpoint (evaluated at t=0.5) matches the
- * given `newLabel` position. Endpoints stay put; the control points are shifted
- * uniformly by (4/3) × delta so that
- *
- *   B(0.5) = 0.125·source + 0.375·cp1 + 0.375·cp2 + 0.125·target
- *
- * moves by exactly `delta`. This keeps the arrow's tangent at each end steady
- * while the arc bulges toward the dragged label.
- */
-function reshapePathToLabel(
-  geometry: {
-    source: { x: number; y: number };
-    cp1: { x: number; y: number };
-    cp2: { x: number; y: number };
-    target: { x: number; y: number };
-  },
-  originalLabelX: number,
-  originalLabelY: number,
-  newLabel: { x: number; y: number },
-): string {
-  const dx = (newLabel.x - originalLabelX) * (4 / 3);
-  const dy = (newLabel.y - originalLabelY) * (4 / 3);
-  const cp1X = geometry.cp1.x + dx;
-  const cp1Y = geometry.cp1.y + dy;
-  const cp2X = geometry.cp2.x + dx;
-  const cp2Y = geometry.cp2.y + dy;
-  return `M ${geometry.source.x} ${geometry.source.y} C ${cp1X} ${cp1Y}, ${cp2X} ${cp2Y}, ${geometry.target.x} ${geometry.target.y}`;
 }

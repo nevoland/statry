@@ -87,13 +87,35 @@ test("skips self-return branches from the diagram", () => {
   expect(result.edges[0]!.to).toBe("on");
 });
 
-test("routes forward edges as a cubic Bezier path", () => {
+test("routes forward edges as an orthogonal path with L segments", () => {
   const result = inspectorLayout(
     description({ a: { transitions: { next: [{ to: "b" }] } }, b: {} }),
     "a",
   );
   expect(result.edges[0]!.path.startsWith("M ")).toBe(true);
-  expect(result.edges[0]!.path).toContain(" C ");
+  expect(result.edges[0]!.path).toContain(" L ");
+  // Same-y forward edges are straight horizontal — no turns, so no Q.
+  expect(result.edges[0]!.path).not.toContain(" Q ");
+});
+
+test("routes forward edges with different y as a Z-shape (two rounded turns)", () => {
+  // Move `a` to a different y so the a→b edge has a Z-shape.
+  const overrides = new Map([["a", { x: 24, y: 200 }]]);
+  const result = inspectorLayout(
+    description({
+      a: { transitions: { next: [{ to: "b" }] } },
+      b: {},
+    }),
+    "a",
+    [],
+    overrides,
+  );
+  const edge = result.edges[0]!;
+  // Z-shape: source → mid corner → mid corner → target = 3 L segments + 2 Q turns.
+  const lCount = (edge.path.match(/ L /g) ?? []).length;
+  const qCount = (edge.path.match(/ Q /g) ?? []).length;
+  expect(lCount).toBeGreaterThanOrEqual(3);
+  expect(qCount).toBe(2);
 });
 
 test("places unreached states in an orphan column", () => {
