@@ -31,15 +31,19 @@ export type InspectorLayoutEdge = {
   path: string;
   labelX: number;
   labelY: number;
+  labelWidth: number;
   branchIndex: number;
   branchTotal: number;
   guards: GuardCondition[];
+  returnSource: string;
   isDynamic: boolean;
 };
 
 export type InspectorLayoutResult = {
   nodes: InspectorLayoutNode[];
   edges: InspectorLayoutEdge[];
+  minX: number;
+  minY: number;
   width: number;
   height: number;
 };

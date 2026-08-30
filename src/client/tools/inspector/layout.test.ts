@@ -122,3 +122,36 @@ test("dynamic edges show up as separate edges when they don't match a static one
   expect(dynamic).toBeDefined();
   expect(dynamic!.to).toBe("c");
 });
+
+test("content bounds encompass back-edge dips and self-loop arcs", () => {
+  const desc = description({
+    a: { transitions: { next: [{ to: "b" }] } },
+    b: { transitions: { back: [{ to: "a" }], tick: [{ to: "b" }] } },
+  });
+  const result = inspectorLayout(desc, "a");
+  const backEdge = result.edges.find(
+    (e) => e.from === "b" && e.to === "a",
+  )!;
+  const selfEdge = result.edges.find(
+    (e) => e.from === "b" && e.to === "b",
+  )!;
+  // The back-edge dips below the last node row.
+  const lastNode = result.nodes[result.nodes.length - 1]!;
+  expect(backEdge.labelY).toBeGreaterThan(lastNode.y + lastNode.height);
+  // The viewBox bottom (minY + height) must exceed the back-edge dip.
+  expect(result.minY + result.height).toBeGreaterThanOrEqual(backEdge.labelY);
+  // The viewBox top (minY) must be at or above the self-loop arc peak.
+  expect(result.minY).toBeLessThanOrEqual(selfEdge.labelY);
+});
+
+test("node overrides move nodes to the provided positions", () => {
+  const desc = description({
+    a: { transitions: { next: [{ to: "b" }] } },
+    b: {},
+  });
+  const overrides = new Map([["b", { x: 500, y: 400 }]]);
+  const result = inspectorLayout(desc, "a", [], overrides);
+  const bNode = result.nodes.find((n) => n.id === "b")!;
+  expect(bNode.x).toBe(500);
+  expect(bNode.y).toBe(400);
+});

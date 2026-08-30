@@ -11,6 +11,8 @@ const NODE_HEIGHT = 40;
 const COLUMN_GAP = 80;
 const ROW_GAP = 40;
 const MARGIN = 24;
+const LABEL_HEIGHT = 18;
+const BOUNDS_PADDING = 12;
 
 type LogicalEdge = {
   from: string;
@@ -19,13 +21,20 @@ type LogicalEdge = {
   branchIndex: number;
   branchTotal: number;
   guards: GuardCondition[];
+  returnSource: string;
   isDynamic: boolean;
+};
+
+type EdgeRouting = {
+  layout: InspectorLayoutEdge;
+  bounds: { minX: number; minY: number; maxX: number; maxY: number };
 };
 
 export function inspectorLayout(
   description: MachineDescription,
   initialState: string,
   dynamicEdges: InspectorLearnedEdge[] = [],
+  overrides: Map<string, { x: number; y: number }> = new Map(),
 ): InspectorLayoutResult {
   const states = Object.keys(description.states);
   const logicalEdges = collectLogicalEdges(description, dynamicEdges);
@@ -44,7 +53,6 @@ export function inspectorLayout(
     string,
     { x: number; y: number; width: number; height: number }
   >();
-  let maxRow = 0;
   columns.forEach((column, rankIndex) => {
     column.forEach((stateId, rowIndex) => {
       const x = MARGIN + rankIndex * (NODE_WIDTH + COLUMN_GAP);
@@ -55,23 +63,78 @@ export function inspectorLayout(
         x,
         y,
       });
-      if (rowIndex > maxRow) maxRow = rowIndex;
     });
   });
+
+  // Apply user overrides on top of the computed grid positions.
+  for (const [stateId, override] of overrides) {
+    const existing = nodePositions.get(stateId);
+    if (existing === undefined) continue;
+    nodePositions.set(stateId, {
+      ...existing,
+      x: override.x,
+      y: override.y,
+    });
+  }
 
   const layoutNodes = states
     .filter((id) => nodePositions.has(id))
     .map((id) => ({ id, ...nodePositions.get(id)! }));
 
-  const layoutEdges: InspectorLayoutEdge[] = logicalEdges
+  const routedEdges = logicalEdges
     .map((edge) => routeEdge(edge, nodePositions))
-    .filter((edge): edge is InspectorLayoutEdge => edge !== undefined);
+    .filter((edge): edge is EdgeRouting => edge !== undefined);
 
-  const width =
-    MARGIN * 2 + columns.length * NODE_WIDTH + (columns.length - 1) * COLUMN_GAP;
-  const height = MARGIN * 2 + (maxRow + 1) * NODE_HEIGHT + maxRow * ROW_GAP;
+  const layoutEdges = routedEdges.map((edge) => edge.layout);
 
-  return { edges: layoutEdges, height, nodes: layoutNodes, width };
+  const bounds = computeContentBounds(layoutNodes, routedEdges);
+
+  return {
+    edges: layoutEdges,
+    height: bounds.maxY - bounds.minY,
+    minX: bounds.minX,
+    minY: bounds.minY,
+    nodes: layoutNodes,
+    width: bounds.maxX - bounds.minX,
+  };
+}
+
+function computeContentBounds(
+  nodes: Array<{ x: number; y: number; width: number; height: number }>,
+  edges: EdgeRouting[],
+): { minX: number; minY: number; maxX: number; maxY: number } {
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+
+  for (const node of nodes) {
+    if (node.x < minX) minX = node.x;
+    if (node.y < minY) minY = node.y;
+    if (node.x + node.width > maxX) maxX = node.x + node.width;
+    if (node.y + node.height > maxY) maxY = node.y + node.height;
+  }
+
+  for (const edge of edges) {
+    if (edge.bounds.minX < minX) minX = edge.bounds.minX;
+    if (edge.bounds.minY < minY) minY = edge.bounds.minY;
+    if (edge.bounds.maxX > maxX) maxX = edge.bounds.maxX;
+    if (edge.bounds.maxY > maxY) maxY = edge.bounds.maxY;
+  }
+
+  if (!Number.isFinite(minX)) {
+    minX = 0;
+    minY = 0;
+    maxX = NODE_WIDTH;
+    maxY = NODE_HEIGHT;
+  }
+
+  return {
+    maxX: maxX + BOUNDS_PADDING,
+    maxY: maxY + BOUNDS_PADDING,
+    minX: minX - BOUNDS_PADDING,
+    minY: minY - BOUNDS_PADDING,
+  };
 }
 
 function collectLogicalEdges(
@@ -96,6 +159,7 @@ function collectLogicalEdges(
           from: state.type,
           guards: branch.guards,
           isDynamic: false,
+          returnSource: branch.returnSource,
           to: branch.targetStateType!,
         });
       });
@@ -118,6 +182,7 @@ function collectLogicalEdges(
       from: dyn.from,
       guards: [],
       isDynamic: true,
+      returnSource: "(observed at runtime; not resolved statically)",
       to: dyn.to,
     });
   }
@@ -182,13 +247,15 @@ function routeEdge(
     string,
     { x: number; y: number; width: number; height: number }
   >,
-): InspectorLayoutEdge | undefined {
+): EdgeRouting | undefined {
   const source = positions.get(edge.from);
   const target = positions.get(edge.to);
   if (source === undefined || target === undefined) return undefined;
 
+  const labelWidth = estimateLabelWidth(edge);
+
   if (edge.from === edge.to) {
-    return withEdgeMeta(edge, selfLoop(edge, source));
+    return selfLoop(edge, source, labelWidth);
   }
 
   const sourceX = source.x + source.width;
@@ -196,47 +263,61 @@ function routeEdge(
   const targetX = target.x;
   const targetY = target.y + target.height / 2;
 
+  const lane = laneOffsetFor(edge);
   const forward = targetX > sourceX;
 
-  // If the source state has multiple branches on the same event, fan out
-  // the vertical starting points so parallel edges don't overlap.
-  const laneOffset = laneOffsetFor(edge);
-
   if (forward) {
-    const startY = sourceY + laneOffset;
-    const endY = targetY + laneOffset;
+    const startY = sourceY + lane;
+    const endY = targetY + lane;
     const dx = Math.max(40, (targetX - sourceX) / 2);
     const cp1X = sourceX + dx;
     const cp2X = targetX - dx;
     const path = `M ${sourceX} ${startY} C ${cp1X} ${startY}, ${cp2X} ${endY}, ${targetX} ${endY}`;
     const labelX = bezierMid(sourceX, cp1X, cp2X, targetX);
     const labelY = bezierMid(startY, startY, endY, endY);
-    return withEdgeMeta(edge, {
+    const layout: InspectorLayoutEdge = withMeta(edge, {
       eventType: edge.eventType,
       from: edge.from,
+      labelWidth,
       labelX,
       labelY,
       path,
       to: edge.to,
     });
+    const bounds = {
+      maxX: Math.max(sourceX, targetX, labelX + labelWidth / 2),
+      maxY: Math.max(startY, endY, labelY + LABEL_HEIGHT / 2),
+      minX: Math.min(sourceX, targetX, labelX - labelWidth / 2),
+      minY: Math.min(startY, endY, labelY - LABEL_HEIGHT / 2),
+    };
+    return { bounds, layout };
   }
 
-  const backSourceX = source.x + source.width / 2 + laneOffset * 4;
-  const backTargetX = target.x + target.width / 2 + laneOffset * 4;
+  // Backward edge — dip below both nodes.
+  const backSourceX = source.x + source.width / 2 + lane * 4;
+  const backTargetX = target.x + target.width / 2 + lane * 4;
   const backSourceY = source.y + source.height;
   const backTargetY = target.y + target.height;
-  const dip = Math.max(backSourceY, backTargetY) + 60 + Math.abs(laneOffset) * 6;
+  const dip = Math.max(backSourceY, backTargetY) + 60 + Math.abs(lane) * 6;
   const path = `M ${backSourceX} ${backSourceY} C ${backSourceX} ${dip}, ${backTargetX} ${dip}, ${backTargetX} ${backTargetY}`;
   const labelX = (backSourceX + backTargetX) / 2;
   const labelY = dip - 4;
-  return withEdgeMeta(edge, {
+  const layout: InspectorLayoutEdge = withMeta(edge, {
     eventType: edge.eventType,
     from: edge.from,
+    labelWidth,
     labelX,
     labelY,
     path,
     to: edge.to,
   });
+  const bounds = {
+    maxX: Math.max(backSourceX, backTargetX, labelX + labelWidth / 2),
+    maxY: dip + LABEL_HEIGHT / 2,
+    minX: Math.min(backSourceX, backTargetX, labelX - labelWidth / 2),
+    minY: Math.min(backSourceY, backTargetY, labelY - LABEL_HEIGHT / 2),
+  };
+  return { bounds, layout };
 }
 
 function laneOffsetFor(edge: LogicalEdge): number {
@@ -248,28 +329,39 @@ function laneOffsetFor(edge: LogicalEdge): number {
 function selfLoop(
   edge: LogicalEdge,
   node: { x: number; y: number; width: number; height: number },
-): Omit<InspectorLayoutEdge, "branchIndex" | "branchTotal" | "guards" | "isDynamic"> {
+  labelWidth: number,
+): EdgeRouting {
   const startX = node.x + node.width * 0.7;
   const startY = node.y;
   const endX = node.x + node.width * 0.3;
   const endY = node.y;
   const arcHeight = 36;
   const path = `M ${startX} ${startY} C ${startX + 20} ${startY - arcHeight}, ${endX - 20} ${endY - arcHeight}, ${endX} ${endY}`;
-  return {
+  const labelX = node.x + node.width / 2;
+  const labelY = startY - arcHeight + 4;
+  const layout: InspectorLayoutEdge = withMeta(edge, {
     eventType: edge.eventType,
     from: edge.from,
-    labelX: node.x + node.width / 2,
-    labelY: startY - arcHeight + 4,
+    labelWidth,
+    labelX,
+    labelY,
     path,
     to: edge.to,
+  });
+  const bounds = {
+    maxX: Math.max(startX, labelX + labelWidth / 2),
+    maxY: Math.max(startY, labelY + LABEL_HEIGHT / 2),
+    minX: Math.min(endX, labelX - labelWidth / 2),
+    minY: Math.min(startY - arcHeight, labelY - LABEL_HEIGHT / 2),
   };
+  return { bounds, layout };
 }
 
-function withEdgeMeta(
+function withMeta(
   edge: LogicalEdge,
   base: Omit<
     InspectorLayoutEdge,
-    "branchIndex" | "branchTotal" | "guards" | "isDynamic"
+    "branchIndex" | "branchTotal" | "guards" | "isDynamic" | "returnSource"
   >,
 ): InspectorLayoutEdge {
   return {
@@ -278,7 +370,29 @@ function withEdgeMeta(
     branchTotal: edge.branchTotal,
     guards: edge.guards,
     isDynamic: edge.isDynamic,
+    returnSource: edge.returnSource,
   };
+}
+
+function estimateLabelWidth(edge: LogicalEdge): number {
+  const label = formatEdgeLabel(edge);
+  const diamondPadding = edge.branchTotal > 1 ? 18 : 0;
+  return Math.max(28, label.length * 7 + 16 + diamondPadding);
+}
+
+export function formatEdgeLabel(edge: {
+  eventType: string;
+  guards: GuardCondition[];
+}): string {
+  const { eventType, guards } = edge;
+  if (guards.length === 0) return eventType;
+  if (guards.every((g) => g.negated)) return `${eventType} ELSE`;
+  const parts = guards.map((g) =>
+    g.negated ? `!(${g.source})` : g.source,
+  );
+  const joined = parts.join(" ∧ ");
+  const truncated = joined.length > 22 ? joined.slice(0, 20) + "…" : joined;
+  return `${eventType} IF ${truncated}`;
 }
 
 function bezierMid(p0: number, p1: number, p2: number, p3: number): number {

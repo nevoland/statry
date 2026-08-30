@@ -60,10 +60,40 @@ const heartbeatMachine = new StateMachine<
 );
 connectionMachine.addEventListener("statetransition", heartbeatMachine.send);
 
+type TrafficState = { type: "red" } | { type: "yellow" } | { type: "green" };
+type TrafficEvent =
+  | { type: "tick" }
+  | { type: "pedestrian" }
+  | { type: "emergency"; vehicle: "fire" | "ambulance" | "police" };
+
+const trafficMachine = new StateMachine<TrafficState, TrafficEvent>(
+  {
+    green: {
+      emergency: (event) =>
+        event.vehicle === "fire"
+          ? { type: "red" }
+          : { type: "yellow" },
+      pedestrian: () => ({ type: "yellow" }),
+      tick: () => ({ type: "yellow" }),
+    },
+    red: {
+      emergency: (event, state) =>
+        event.vehicle === "ambulance" ? { type: "green" } : state,
+      tick: () => ({ type: "green" }),
+    },
+    yellow: {
+      emergency: () => ({ type: "red" }),
+      tick: () => ({ type: "red" }),
+    },
+  },
+  { type: "red" },
+);
+
 const machines = [
   { machine: dragMachine, name: "drag" },
   { machine: connectionMachine, name: "connection" },
   { machine: heartbeatMachine, name: "heartbeat" },
+  { machine: trafficMachine, name: "traffic" },
 ];
 
 const globalScope = getGlobal() as unknown as Record<string, unknown>;
@@ -71,6 +101,7 @@ globalScope.__machines__ = {
   connection: connectionMachine,
   drag: dragMachine,
   heartbeat: heartbeatMachine,
+  traffic: trafficMachine,
 };
 
 export function App() {
