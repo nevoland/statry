@@ -8,7 +8,11 @@ import {
   useRef,
   useState,
 } from "../dependencies.js";
-import { formatEdgeLabel, inspectorLayout } from "../tools/inspector/layout.js";
+import {
+  formatEdgeLabel,
+  inspectorLayout,
+  orthogonalPath,
+} from "../tools/inspector/layout.js";
 import {
   branchKey,
   edgeKey,
@@ -706,6 +710,10 @@ function MachineGroup({
                   ...edge,
                   labelX: labelPosition.x,
                   labelY: labelPosition.y,
+                  path: reshapeOrthogonalPathToLabel(
+                    edge.geometry.waypoints,
+                    labelPosition,
+                  ),
                 };
           return (
             <DiagramEdge
@@ -1232,4 +1240,69 @@ function viewBoxEqualsBounds(vb: ViewBox, bounds: ViewBox): boolean {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
+}
+
+/**
+ * Reroute an orthogonal edge so its middle passes through a dragged label. The
+ * direction of the source-side exit segment is preserved (horizontal or
+ * vertical), and a rectilinear stair is constructed:
+ *
+ *   S → (bend, S.y or S.x)   [exit orthogonal to first natural segment]
+ *   → (labelX, labelY)       [corner at the label itself]
+ *   → (T.x, labelY)          [reach the target's column]
+ *   → T                      [enter the target vertically]
+ *
+ * Collinear consecutive waypoints are removed so the natural label position
+ * still produces a clean two-turn Z / U instead of gratuitous extra corners.
+ */
+function reshapeOrthogonalPathToLabel(
+  waypoints: Array<{ x: number; y: number }>,
+  newLabel: { x: number; y: number },
+): string {
+  if (waypoints.length < 2) return "";
+  const source = waypoints[0]!;
+  const target = waypoints[waypoints.length - 1]!;
+  const second = waypoints[1] ?? target;
+  const exitHorizontal =
+    Math.abs(second.x - source.x) >= Math.abs(second.y - source.y);
+  const reshaped: Array<{ x: number; y: number }> = [source];
+  if (exitHorizontal) {
+    reshaped.push({ x: newLabel.x, y: source.y });
+    reshaped.push({ x: newLabel.x, y: newLabel.y });
+    reshaped.push({ x: target.x, y: newLabel.y });
+  } else {
+    reshaped.push({ x: source.x, y: newLabel.y });
+    reshaped.push({ x: newLabel.x, y: newLabel.y });
+    reshaped.push({ x: target.x, y: newLabel.y });
+  }
+  reshaped.push(target);
+  return orthogonalPath(simplifyOrthogonalWaypoints(reshaped));
+}
+
+function simplifyOrthogonalWaypoints(
+  points: Array<{ x: number; y: number }>,
+): Array<{ x: number; y: number }> {
+  const kept: Array<{ x: number; y: number }> = [];
+  for (let i = 0; i < points.length; i++) {
+    const p = points[i]!;
+    if (kept.length === 0) {
+      kept.push(p);
+      continue;
+    }
+    const last = kept[kept.length - 1]!;
+    if (last.x === p.x && last.y === p.y) continue;
+    if (kept.length >= 2) {
+      const prev = kept[kept.length - 2]!;
+      const collinearX =
+        prev.x === last.x && last.x === p.x;
+      const collinearY =
+        prev.y === last.y && last.y === p.y;
+      if (collinearX || collinearY) {
+        kept[kept.length - 1] = p;
+        continue;
+      }
+    }
+    kept.push(p);
+  }
+  return kept;
 }
