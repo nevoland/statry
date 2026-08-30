@@ -133,6 +133,32 @@ export function App() {
             label="connection.disconnect"
             onClick={() => connectionMachine.send({ type: "disconnect" })}
           />
+          <DemoButton
+            label="traffic.tick"
+            onClick={() => trafficMachine.send({ type: "tick" })}
+          />
+          <DemoButton
+            label="traffic.pedestrian"
+            onClick={() => trafficMachine.send({ type: "pedestrian" })}
+          />
+          <DemoButton
+            label="traffic.emergency(fire)"
+            onClick={() =>
+              trafficMachine.send({ type: "emergency", vehicle: "fire" })
+            }
+          />
+          <DemoButton
+            label="traffic.emergency(ambulance)"
+            onClick={() =>
+              trafficMachine.send({ type: "emergency", vehicle: "ambulance" })
+            }
+          />
+          <DemoButton
+            label="traffic.emergency(police)"
+            onClick={() =>
+              trafficMachine.send({ type: "emergency", vehicle: "police" })
+            }
+          />
         </div>
       </header>
       <Inspector machines={machines} />

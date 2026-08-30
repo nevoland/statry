@@ -1,4 +1,4 @@
-import { clsx, useMemo, useState } from "../dependencies.js";
+import { clsx, useCallback, useMemo, useState } from "../dependencies.js";
 import {
   edgeKey,
   type AnyStateMachine,
@@ -7,7 +7,7 @@ import {
 } from "../tools/inspector/types.js";
 import { useInspector } from "../tools/inspector/useInspector.js";
 
-import { InspectorDiagram } from "./InspectorDiagram.js";
+import { InspectorCanvas } from "./InspectorCanvas.js";
 import { InspectorEventTable } from "./InspectorEventTable.js";
 
 export type InspectorProps = {
@@ -34,8 +34,14 @@ export function Inspector({ machines }: InspectorProps) {
     [events, visibleMachines, showIgnored],
   );
 
-  const visibleEntries = machines.filter(({ machine }) =>
-    visibleMachines.has(machine),
+  const visibleEntries = useMemo(
+    () => machines.filter(({ machine }) => visibleMachines.has(machine)),
+    [machines, visibleMachines],
+  );
+
+  const resolveHighlight = useCallback(
+    (machine: AnyStateMachine) => resolveEventHighlight(selectedEvent, machine),
+    [selectedEvent],
   );
 
   return (
@@ -79,27 +85,11 @@ export function Inspector({ machines }: InspectorProps) {
         </label>
       </header>
 
-      <div class="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-        {visibleEntries.map(({ name, machine }) => {
-          const view = views.get(machine);
-          if (view === undefined) return null;
-          const highlight = resolveHighlight(selectedEvent, machine);
-          return (
-            <InspectorDiagram
-              currentStateType={view.currentStateType}
-              description={view.description}
-              dynamicEdges={view.dynamicEdges}
-              flashEdgeKey={view.flashEdgeKey}
-              highlightedEdgeKey={highlight.edgeKey}
-              ignoredHighlightState={highlight.ignoredState}
-              initialStateType={view.initialStateType}
-              key={name}
-              name={name}
-              observedCounts={view.observedCounts}
-            />
-          );
-        })}
-      </div>
+      <InspectorCanvas
+        machines={visibleEntries}
+        resolveHighlight={resolveHighlight}
+        views={views}
+      />
 
       <InspectorEventTable
         events={filteredEvents}
@@ -118,7 +108,7 @@ function toggle<T>(set: Set<T>, value: T): Set<T> {
   return next;
 }
 
-function resolveHighlight(
+function resolveEventHighlight(
   event: InspectorRuntimeEvent | null,
   machine: AnyStateMachine,
 ): { edgeKey: string | null; ignoredState: string | null } {
