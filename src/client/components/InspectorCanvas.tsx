@@ -29,6 +29,7 @@ const CANVAS_PADDING = 24;
 const MIN_ZOOM = 0.25;
 const MAX_ZOOM = 4;
 const ZOOM_STEP = 1.2;
+const LABEL_DRAG_THRESHOLD_SQ = 25;
 
 export type InspectorCanvasProps = {
   machines: InspectorMachineEntry[];
@@ -71,7 +72,19 @@ type PanDrag = {
   scaleY: number;
 };
 
-type DragState = NodeDrag | PanDrag;
+type LabelDrag = {
+  kind: "label";
+  overrideKey: string;
+  startClientX: number;
+  startClientY: number;
+  initialX: number;
+  initialY: number;
+  scaleX: number;
+  scaleY: number;
+  onClickIfNotMoved: () => void;
+};
+
+type DragState = NodeDrag | PanDrag | LabelDrag;
 
 type PopoverState = {
   key: string;
@@ -82,6 +95,13 @@ type PopoverState = {
 
 function overrideKeyOf(machineName: string, stateType: string): NodeOverrideKey {
   return `${machineName}::${stateType}`;
+}
+
+function labelOverrideKey(
+  machineName: string,
+  edge: InspectorLayoutEdge,
+): string {
+  return `${machineName}::${edgeKey(edge.from, edge.to, edge.eventType)}#${edge.branchIndex}`;
 }
 
 export function InspectorCanvas({
@@ -98,6 +118,9 @@ export function InspectorCanvas({
   const [overrides, setOverrides] = useState<Map<NodeOverrideKey, { x: number; y: number }>>(
     () => new Map(),
   );
+  const [labelOverrides, setLabelOverrides] = useState<
+    Map<string, { x: number; y: number }>
+  >(() => new Map());
   const [viewBox, setViewBox] = useState<ViewBox | null>(null);
   const [drag, setDrag] = useState<DragState | null>(null);
   const [popover, setPopover] = useState<PopoverState | null>(null);
@@ -116,16 +139,21 @@ export function InspectorCanvas({
     setViewBox(boundsToViewBox(contentBounds));
     setPopover(null);
     setOverrides(new Map());
+    setLabelOverrides(new Map());
     // Only reset when the set of machines changes, not on every override tweak.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [machineKey]);
 
   useEffect(() => {
     if (drag === null) return undefined;
+    let hasMoved = false;
     const onMove = (event: PointerEvent) => {
-      const dx = (event.clientX - drag.startClientX) * drag.scaleX;
-      const dy = (event.clientY - drag.startClientY) * drag.scaleY;
+      const screenDx = event.clientX - drag.startClientX;
+      const screenDy = event.clientY - drag.startClientY;
+      const dx = screenDx * drag.scaleX;
+      const dy = screenDy * drag.scaleY;
       if (drag.kind === "node") {
+        hasMoved = true;
         setOverrides((previous) => {
           const next = new Map(previous);
           next.set(drag.overrideKey, {
@@ -134,7 +162,10 @@ export function InspectorCanvas({
           });
           return next;
         });
-      } else {
+        return;
+      }
+      if (drag.kind === "pan") {
+        hasMoved = true;
         setViewBox((previous) => {
           if (previous === null) return previous;
           return {
@@ -143,9 +174,31 @@ export function InspectorCanvas({
             minY: drag.initialMinY - dy,
           };
         });
+        return;
       }
+      // Label drag with click-vs-drag threshold.
+      if (
+        !hasMoved &&
+        screenDx * screenDx + screenDy * screenDy < LABEL_DRAG_THRESHOLD_SQ
+      ) {
+        return;
+      }
+      hasMoved = true;
+      setLabelOverrides((previous) => {
+        const next = new Map(previous);
+        next.set(drag.overrideKey, {
+          x: drag.initialX + dx,
+          y: drag.initialY + dy,
+        });
+        return next;
+      });
     };
-    const onUp = () => setDrag(null);
+    const onUp = () => {
+      if (drag.kind === "label" && !hasMoved) {
+        drag.onClickIfNotMoved();
+      }
+      setDrag(null);
+    };
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp);
     window.addEventListener("pointercancel", onUp);
@@ -300,12 +353,12 @@ export function InspectorCanvas({
     setPopover(null);
   };
 
-  const onEdgeClick = (
+  const openPopover = (
     machineName: string,
     edge: InspectorLayoutEdge,
-    event: MouseEvent,
+    clientX: number,
+    clientY: number,
   ) => {
-    event.stopPropagation();
     const container = containerRef.current;
     if (container === null) return;
     const rect = container.getBoundingClientRect();
@@ -317,19 +370,49 @@ export function InspectorCanvas({
     setPopover({
       key,
       machineName,
-      x: event.clientX - rect.left,
-      y: event.clientY - rect.top,
+      x: clientX - rect.left,
+      y: clientY - rect.top,
+    });
+  };
+
+  const onLabelPointerDown = (
+    machineName: string,
+    edge: InspectorLayoutEdge,
+    event: PointerEvent,
+  ) => {
+    if (event.button !== 0) return;
+    event.stopPropagation();
+    event.preventDefault();
+    const key = labelOverrideKey(machineName, edge);
+    const existing = labelOverrides.get(key);
+    const initialX = existing?.x ?? edge.labelX;
+    const initialY = existing?.y ?? edge.labelY;
+    const { scaleX, scaleY } = getScale();
+    const clickX = event.clientX;
+    const clickY = event.clientY;
+    setDrag({
+      initialX,
+      initialY,
+      kind: "label",
+      onClickIfNotMoved: () => openPopover(machineName, edge, clickX, clickY),
+      overrideKey: key,
+      scaleX,
+      scaleY,
+      startClientX: clickX,
+      startClientY: clickY,
     });
   };
 
   const resetView = () => {
     setOverrides(new Map());
+    setLabelOverrides(new Map());
     setViewBox(boundsToViewBox(contentBounds));
     setPopover(null);
   };
 
   const hasCustomView =
     overrides.size > 0 ||
+    labelOverrides.size > 0 ||
     (viewBox !== null && !viewBoxEqualsBounds(viewBox, contentBounds));
 
   const cursorClass = drag?.kind === "pan" ? "cursor-grabbing" : "cursor-grab";
@@ -423,9 +506,10 @@ export function InspectorCanvas({
               highlightedEdgeKey={highlight.edgeKey}
               ignoredHighlightState={highlight.ignoredState}
               key={pm.entry.name}
+              labelOverrides={labelOverrides}
               observedCounts={pm.view.observedCounts}
-              onEdgeClick={(edge, event) =>
-                onEdgeClick(pm.entry.name, edge, event)
+              onLabelPointerDown={(edge, event) =>
+                onLabelPointerDown(pm.entry.name, edge, event)
               }
               onNodePointerDown={(node, event) =>
                 onNodePointerDown(pm.entry.name, node, event)
@@ -479,11 +563,15 @@ type MachineGroupProps = {
   arrowMutedId: string;
   arrowHighlightId: string;
   draggingOverrideKey: NodeOverrideKey | null;
+  labelOverrides: Map<string, { x: number; y: number }>;
   onNodePointerDown: (
     node: { id: string; x: number; y: number },
     event: PointerEvent,
   ) => void;
-  onEdgeClick: (edge: InspectorLayoutEdge, event: MouseEvent) => void;
+  onLabelPointerDown: (
+    edge: InspectorLayoutEdge,
+    event: PointerEvent,
+  ) => void;
 };
 
 function MachineGroup({
@@ -497,8 +585,9 @@ function MachineGroup({
   arrowMutedId,
   arrowHighlightId,
   draggingOverrideKey,
+  labelOverrides,
   onNodePointerDown,
-  onEdgeClick,
+  onLabelPointerDown,
 }: MachineGroupProps) {
   const { entry, layout, offset, frame } = positioned;
 
@@ -525,25 +614,37 @@ function MachineGroup({
         {entry.name.toUpperCase()}
       </text>
       <g transform={`translate(${offset.x}, ${offset.y})`}>
-        {layout.edges.map((edge) => (
-          <DiagramEdge
-            arrowHighlightId={arrowHighlightId}
-            arrowId={arrowId}
-            arrowMutedId={arrowMutedId}
-            edge={edge}
-            flashEdgeKey={flashEdgeKey}
-            highlightedEdgeKey={highlightedEdgeKey}
-            key={`${edgeKey(edge.from, edge.to, edge.eventType)}#${edge.branchIndex}`}
-            observedCount={
-              edge.isDynamic
-                ? Infinity
-                : (observedCounts.get(
-                    branchKey(edge.from, edge.eventType, edge.branchIndex),
-                  ) ?? 0)
-            }
-            onLabelClick={onEdgeClick}
-          />
-        ))}
+        {layout.edges.map((edge) => {
+          const overrideKeyStr = labelOverrideKey(entry.name, edge);
+          const labelPosition = labelOverrides.get(overrideKeyStr);
+          const renderedEdge =
+            labelPosition === undefined
+              ? edge
+              : {
+                  ...edge,
+                  labelX: labelPosition.x,
+                  labelY: labelPosition.y,
+                };
+          return (
+            <DiagramEdge
+              arrowHighlightId={arrowHighlightId}
+              arrowId={arrowId}
+              arrowMutedId={arrowMutedId}
+              edge={renderedEdge}
+              flashEdgeKey={flashEdgeKey}
+              highlightedEdgeKey={highlightedEdgeKey}
+              key={`${edgeKey(edge.from, edge.to, edge.eventType)}#${edge.branchIndex}`}
+              observedCount={
+                edge.isDynamic
+                  ? Infinity
+                  : (observedCounts.get(
+                      branchKey(edge.from, edge.eventType, edge.branchIndex),
+                    ) ?? 0)
+              }
+              onLabelPointerDown={onLabelPointerDown}
+            />
+          );
+        })}
         {layout.nodes.map((node) => (
           <DiagramNode
             isCurrent={node.id === currentStateType}
@@ -621,7 +722,10 @@ type DiagramEdgeProps = {
   flashEdgeKey: string | null;
   highlightedEdgeKey: string | null;
   observedCount: number;
-  onLabelClick: (edge: InspectorLayoutEdge, event: MouseEvent) => void;
+  onLabelPointerDown: (
+    edge: InspectorLayoutEdge,
+    event: PointerEvent,
+  ) => void;
 };
 
 function DiagramEdge({
@@ -632,7 +736,7 @@ function DiagramEdge({
   flashEdgeKey,
   highlightedEdgeKey,
   observedCount,
-  onLabelClick,
+  onLabelPointerDown,
 }: DiagramEdgeProps) {
   const key = edgeKey(edge.from, edge.to, edge.eventType);
   const isFlashing = key === flashEdgeKey;
@@ -661,8 +765,11 @@ function DiagramEdge({
         stroke-width={active ? 2 : 1.25}
       />
       <g
+        class="cursor-grab"
         data-edge={key}
-        onClick={(event) => onLabelClick(edge, event as unknown as MouseEvent)}
+        onPointerDown={(event) =>
+          onLabelPointerDown(edge, event as unknown as PointerEvent)
+        }
       >
         <rect
           fill="rgb(15 23 42)"

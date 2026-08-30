@@ -144,6 +144,29 @@ test("content bounds encompass back-edge dips and self-loop arcs", () => {
   expect(result.minY).toBeLessThanOrEqual(selfEdge.labelY);
 });
 
+test("parallel edges between the same pair get distinct lanes", () => {
+  const desc = description({
+    a: {
+      transitions: {
+        alt: [{ to: "b" }],
+        tick: [{ to: "b" }],
+        wave: [{ to: "b" }],
+      },
+    },
+    b: {},
+  });
+  const result = inspectorLayout(desc, "a");
+  const edges = result.edges.filter((e) => e.from === "a" && e.to === "b");
+  expect(edges).toHaveLength(3);
+  const laneTotals = new Set(edges.map((e) => e.laneTotal));
+  const laneIndices = new Set(edges.map((e) => e.laneIndex));
+  expect(laneTotals).toEqual(new Set([3]));
+  expect(laneIndices).toEqual(new Set([0, 1, 2]));
+  // Different labelY positions -> visually separated.
+  const labelYs = edges.map((e) => e.labelY);
+  expect(new Set(labelYs).size).toBe(3);
+});
+
 test("node overrides move nodes to the provided positions", () => {
   const desc = description({
     a: { transitions: { next: [{ to: "b" }] } },

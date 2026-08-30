@@ -34,6 +34,8 @@ export type InspectorLayoutEdge = {
   labelWidth: number;
   branchIndex: number;
   branchTotal: number;
+  laneIndex: number;
+  laneTotal: number;
   guards: GuardCondition[];
   returnSource: string;
   isDynamic: boolean;

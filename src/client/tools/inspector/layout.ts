@@ -20,6 +20,8 @@ type LogicalEdge = {
   eventType: string;
   branchIndex: number;
   branchTotal: number;
+  laneIndex: number;
+  laneTotal: number;
   guards: GuardCondition[];
   returnSource: string;
   isDynamic: boolean;
@@ -159,6 +161,8 @@ function collectLogicalEdges(
           from: state.type,
           guards: branch.guards,
           isDynamic: false,
+          laneIndex: 0,
+          laneTotal: 1,
           returnSource: branch.returnSource,
           to: branch.targetStateType!,
         });
@@ -182,12 +186,31 @@ function collectLogicalEdges(
       from: dyn.from,
       guards: [],
       isDynamic: true,
+      laneIndex: 0,
+      laneTotal: 1,
       returnSource: "(observed at runtime; not resolved statically)",
       to: dyn.to,
     });
   }
 
+  assignLanes(edges);
   return edges;
+}
+
+function assignLanes(edges: LogicalEdge[]): void {
+  const laneTotals = new Map<string, number>();
+  for (const edge of edges) {
+    const key = `${edge.from}->${edge.to}`;
+    laneTotals.set(key, (laneTotals.get(key) ?? 0) + 1);
+  }
+  const laneCounters = new Map<string, number>();
+  for (const edge of edges) {
+    const key = `${edge.from}->${edge.to}`;
+    const index = laneCounters.get(key) ?? 0;
+    edge.laneIndex = index;
+    edge.laneTotal = laneTotals.get(key)!;
+    laneCounters.set(key, index + 1);
+  }
 }
 
 function assignRanks(
@@ -293,12 +316,14 @@ function routeEdge(
     return { bounds, layout };
   }
 
-  // Backward edge — dip below both nodes.
+  // Backward edge — dip below both nodes. Stack the dip depth by lane index
+  // so parallel back-edges get distinct labels; also fan the source/target X
+  // by the signed lane so the curves themselves don't overlap.
   const backSourceX = source.x + source.width / 2 + lane * 4;
   const backTargetX = target.x + target.width / 2 + lane * 4;
   const backSourceY = source.y + source.height;
   const backTargetY = target.y + target.height;
-  const dip = Math.max(backSourceY, backTargetY) + 60 + Math.abs(lane) * 6;
+  const dip = Math.max(backSourceY, backTargetY) + 60 + edge.laneIndex * 22;
   const path = `M ${backSourceX} ${backSourceY} C ${backSourceX} ${dip}, ${backTargetX} ${dip}, ${backTargetX} ${backTargetY}`;
   const labelX = (backSourceX + backTargetX) / 2;
   const labelY = dip - 4;
@@ -321,9 +346,9 @@ function routeEdge(
 }
 
 function laneOffsetFor(edge: LogicalEdge): number {
-  if (edge.branchTotal <= 1) return 0;
-  const centered = edge.branchIndex - (edge.branchTotal - 1) / 2;
-  return centered * 12;
+  if (edge.laneTotal <= 1) return 0;
+  const centered = edge.laneIndex - (edge.laneTotal - 1) / 2;
+  return centered * 22;
 }
 
 function selfLoop(
@@ -335,7 +360,7 @@ function selfLoop(
   const startY = node.y;
   const endX = node.x + node.width * 0.3;
   const endY = node.y;
-  const arcHeight = 36;
+  const arcHeight = 36 + edge.laneIndex * 22;
   const path = `M ${startX} ${startY} C ${startX + 20} ${startY - arcHeight}, ${endX - 20} ${endY - arcHeight}, ${endX} ${endY}`;
   const labelX = node.x + node.width / 2;
   const labelY = startY - arcHeight + 4;
@@ -361,7 +386,13 @@ function withMeta(
   edge: LogicalEdge,
   base: Omit<
     InspectorLayoutEdge,
-    "branchIndex" | "branchTotal" | "guards" | "isDynamic" | "returnSource"
+    | "branchIndex"
+    | "branchTotal"
+    | "laneIndex"
+    | "laneTotal"
+    | "guards"
+    | "isDynamic"
+    | "returnSource"
   >,
 ): InspectorLayoutEdge {
   return {
@@ -370,6 +401,8 @@ function withMeta(
     branchTotal: edge.branchTotal,
     guards: edge.guards,
     isDynamic: edge.isDynamic,
+    laneIndex: edge.laneIndex,
+    laneTotal: edge.laneTotal,
     returnSource: edge.returnSource,
   };
 }
