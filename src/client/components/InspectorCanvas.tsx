@@ -9,9 +9,12 @@ import {
   useState,
 } from "../dependencies.js";
 import {
+  clampLabelOutOfObstacles,
+  clampNodeOutOfObstacles,
   formatEdgeLabel,
   inspectorLayout,
   orthogonalPath,
+  simplifyWaypoints,
 } from "../tools/inspector/layout.js";
 import {
   branchKey,
@@ -159,6 +162,10 @@ export function InspectorCanvas({
     () => layoutAllMachines(machines, views, overrides, labelOverrides),
     [machines, views, overrides, labelOverrides],
   );
+  // Keep a ref of positioned so the drag effect can read the latest layout
+  // without capturing a stale snapshot in its closure.
+  const positionedRef = useRef(positioned);
+  positionedRef.current = positioned;
   const contentBounds = useMemo(
     () => computeCanvasBounds(positioned),
     [positioned],
@@ -185,14 +192,32 @@ export function InspectorCanvas({
       const dy = screenDy * drag.scaleY;
       if (drag.kind === "node") {
         hasMoved = true;
+        const nodeInfo = findNodeInfo(
+          positionedRef.current,
+          drag.overrideKey,
+        );
+        const proposedX = drag.initialX + dx;
+        const proposedY = drag.initialY + dy;
+        const clamped = nodeInfo
+          ? clampNodeOutOfObstacles(
+              proposedX,
+              proposedY,
+              nodeInfo.width,
+              nodeInfo.height,
+              nodeInfo.otherObstacles,
+            )
+          : { x: proposedX, y: proposedY };
         setOverrides((previous) => {
           const next = new Map(previous);
-          next.set(drag.overrideKey, {
-            x: drag.initialX + dx,
-            y: drag.initialY + dy,
-          });
+          next.set(drag.overrideKey, { x: clamped.x, y: clamped.y });
           return next;
         });
+        // A moved node re-routes its incident transitions, so any label
+        // overrides on those edges no longer belong on the new geometry —
+        // drop them so the labels snap back to the fresh auto-layout.
+        setLabelOverrides((previous) =>
+          dropLabelOverridesForNode(previous, drag.overrideKey),
+        );
         return;
       }
       if (drag.kind === "pan") {
@@ -227,12 +252,35 @@ export function InspectorCanvas({
         return;
       }
       hasMoved = true;
+      const machineName = drag.overrideKey.split("::")[0];
+      const machineForLabel = machineName
+        ? positionedRef.current.find((pm) => pm.entry.name === machineName)
+        : undefined;
+      const proposedX = drag.initialX + dx;
+      const proposedY = drag.initialY + dy;
+      const labelWidth = machineName
+        ? findEdgeLabelWidth(
+            positionedRef.current,
+            machineName,
+            drag.overrideKey,
+          )
+        : 100;
+      const obstacles = machineForLabel
+        ? collectLabelDragObstacles(
+            machineForLabel,
+            machineName!,
+            drag.overrideKey,
+          )
+        : [];
+      const clamped = clampLabelOutOfObstacles(
+        proposedX,
+        proposedY,
+        labelWidth,
+        obstacles,
+      );
       setLabelOverrides((previous) => {
         const next = new Map(previous);
-        next.set(drag.overrideKey, {
-          x: drag.initialX + dx,
-          y: drag.initialY + dy,
-        });
+        next.set(drag.overrideKey, { x: clamped.labelX, y: clamped.labelY });
         return next;
       });
     };
@@ -1243,14 +1291,140 @@ function clamp(value: number, min: number, max: number): number {
 }
 
 /**
- * Reroute an orthogonal edge so its middle passes through a dragged label. The
- * direction of the source-side exit segment is preserved (horizontal or
- * vertical), and a rectilinear stair is constructed:
- *
- *   S → (bend, S.y or S.x)   [exit orthogonal to first natural segment]
- *   → (labelX, labelY)       [corner at the label itself]
- *   → (T.x, labelY)          [reach the target's column]
- *   → T                      [enter the target vertically]
+ * Remove every label override whose edge starts or ends at the state whose
+ * position just changed. Called from the node-drag effect so that once a node
+ * is moved the labels of transitions incident to it snap back to the fresh
+ * auto-routed positions instead of dangling at their old drag positions.
+ */
+function dropLabelOverridesForNode(
+  labelOverrides: Map<string, { x: number; y: number }>,
+  nodeOverrideKey: NodeOverrideKey,
+): Map<string, { x: number; y: number }> {
+  const [nodeMachine, stateType] = nodeOverrideKey.split("::");
+  if (nodeMachine === undefined || stateType === undefined) return labelOverrides;
+  const next = new Map(labelOverrides);
+  for (const key of Array.from(next.keys())) {
+    const [labelMachine, rest] = key.split("::");
+    if (labelMachine !== nodeMachine || rest === undefined) continue;
+    const arrow = rest.indexOf("->");
+    if (arrow < 0) continue;
+    const from = rest.slice(0, arrow);
+    const afterArrow = rest.slice(arrow + 2);
+    const colon = afterArrow.indexOf(":");
+    const to = colon >= 0 ? afterArrow.slice(0, colon) : afterArrow;
+    if (from === stateType || to === stateType) next.delete(key);
+  }
+  return next;
+}
+
+/**
+ * Look up the label pill width from the current layout so `clampLabelOutOfObstacles`
+ * can compute the correct bounding box during a drag.
+ */
+function findEdgeLabelWidth(
+  positioned: ReadonlyArray<PositionedMachine>,
+  machineName: string,
+  overrideKey: string,
+): number {
+  const machine = positioned.find((pm) => pm.entry.name === machineName);
+  if (machine === undefined) return 100;
+  for (const edge of machine.layout.edges) {
+    if (labelOverrideKey(machineName, edge) === overrideKey) {
+      return edge.labelWidth;
+    }
+  }
+  return 100;
+}
+
+const LABEL_HEIGHT_PX = 18;
+
+/**
+ * Resolve the identity + collision obstacles for the node currently being
+ * dragged: the sibling state boxes in the same machine (in their live
+ * positions), plus the auto-routed label rects around them. Returns null if
+ * we can't identify the machine or the node, so the caller can fall back to
+ * an unclamped drag.
+ */
+function findNodeInfo(
+  positioned: ReadonlyArray<PositionedMachine>,
+  overrideKey: string,
+): {
+  width: number;
+  height: number;
+  otherObstacles: Array<{
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  }>;
+} | null {
+  const [machineName, stateType] = overrideKey.split("::");
+  if (machineName === undefined || stateType === undefined) return null;
+  const machine = positioned.find((pm) => pm.entry.name === machineName);
+  if (machine === undefined) return null;
+  const node = machine.layout.nodes.find((n) => n.id === stateType);
+  if (node === undefined) return null;
+  const others: Array<{
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  }> = machine.layout.nodes
+    .filter((n) => n.id !== stateType)
+    .map((n) => ({ height: n.height, width: n.width, x: n.x, y: n.y }));
+  for (const edge of machine.layout.edges) {
+    others.push({
+      height: LABEL_HEIGHT_PX,
+      width: edge.labelWidth,
+      x: edge.labelX - edge.labelWidth / 2,
+      y: edge.labelY - LABEL_HEIGHT_PX / 2,
+    });
+  }
+  return {
+    height: node.height,
+    otherObstacles: others,
+    width: node.width,
+  };
+}
+
+/**
+ * Build the obstacle list for a label being dragged: every state box in the
+ * same machine plus every OTHER label pill (the one being dragged is excluded).
+ */
+function collectLabelDragObstacles(
+  machine: PositionedMachine,
+  machineName: string,
+  overrideKey: string,
+): Array<{ x: number; y: number; width: number; height: number }> {
+  const obstacles: Array<{
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  }> = machine.layout.nodes.map((n) => ({
+    height: n.height,
+    width: n.width,
+    x: n.x,
+    y: n.y,
+  }));
+  for (const edge of machine.layout.edges) {
+    if (labelOverrideKey(machineName, edge) === overrideKey) continue;
+    obstacles.push({
+      height: LABEL_HEIGHT_PX,
+      width: edge.labelWidth,
+      x: edge.labelX - edge.labelWidth / 2,
+      y: edge.labelY - LABEL_HEIGHT_PX / 2,
+    });
+  }
+  return obstacles;
+}
+
+/**
+ * Reroute an orthogonal edge so its middle passes through a dragged label,
+ * while preserving both the exit direction (side of the source it leaves) and
+ * the entry direction (side of the target it enters). Endpoints always dock at
+ * the middle of the closest node edge — the reshape only bends the middle of
+ * the path.
  *
  * Collinear consecutive waypoints are removed so the natural label position
  * still produces a clean two-turn Z / U instead of gratuitous extra corners.
@@ -1263,46 +1437,33 @@ function reshapeOrthogonalPathToLabel(
   const source = waypoints[0]!;
   const target = waypoints[waypoints.length - 1]!;
   const second = waypoints[1] ?? target;
+  const secondToLast = waypoints[waypoints.length - 2] ?? source;
   const exitHorizontal =
     Math.abs(second.x - source.x) >= Math.abs(second.y - source.y);
+  const entryHorizontal =
+    Math.abs(target.x - secondToLast.x) >= Math.abs(target.y - secondToLast.y);
+
   const reshaped: Array<{ x: number; y: number }> = [source];
+
+  // Leg 1: exit source and reach the label position, preserving exit axis.
   if (exitHorizontal) {
     reshaped.push({ x: newLabel.x, y: source.y });
     reshaped.push({ x: newLabel.x, y: newLabel.y });
-    reshaped.push({ x: target.x, y: newLabel.y });
   } else {
     reshaped.push({ x: source.x, y: newLabel.y });
     reshaped.push({ x: newLabel.x, y: newLabel.y });
+  }
+
+  // Leg 2: approach target from the label, preserving entry axis. A horizontal
+  // entry needs an intermediate bend so the final segment is horizontal.
+  if (entryHorizontal) {
+    const intermediateX = (newLabel.x + target.x) / 2;
+    reshaped.push({ x: intermediateX, y: newLabel.y });
+    reshaped.push({ x: intermediateX, y: target.y });
+  } else {
     reshaped.push({ x: target.x, y: newLabel.y });
   }
-  reshaped.push(target);
-  return orthogonalPath(simplifyOrthogonalWaypoints(reshaped));
-}
 
-function simplifyOrthogonalWaypoints(
-  points: Array<{ x: number; y: number }>,
-): Array<{ x: number; y: number }> {
-  const kept: Array<{ x: number; y: number }> = [];
-  for (let i = 0; i < points.length; i++) {
-    const p = points[i]!;
-    if (kept.length === 0) {
-      kept.push(p);
-      continue;
-    }
-    const last = kept[kept.length - 1]!;
-    if (last.x === p.x && last.y === p.y) continue;
-    if (kept.length >= 2) {
-      const prev = kept[kept.length - 2]!;
-      const collinearX =
-        prev.x === last.x && last.x === p.x;
-      const collinearY =
-        prev.y === last.y && last.y === p.y;
-      if (collinearX || collinearY) {
-        kept[kept.length - 1] = p;
-        continue;
-      }
-    }
-    kept.push(p);
-  }
-  return kept;
+  reshaped.push(target);
+  return orthogonalPath(simplifyWaypoints(reshaped));
 }

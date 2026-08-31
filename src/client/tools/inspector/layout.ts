@@ -1,3 +1,5 @@
+import { computeLayeredLayout } from "./sugiyama.js";
+import type { SugiyamaEdge } from "./sugiyama.js";
 import type {
   GuardCondition,
   InspectorLayoutEdge,
@@ -32,6 +34,8 @@ type EdgeRouting = {
   bounds: { minX: number; minY: number; maxX: number; maxY: number };
 };
 
+type Rect = { x: number; y: number; width: number; height: number };
+
 export function inspectorLayout(
   description: MachineDescription,
   initialState: string,
@@ -41,32 +45,57 @@ export function inspectorLayout(
   const states = Object.keys(description.states);
   const logicalEdges = collectLogicalEdges(description, dynamicEdges);
 
-  const outgoing = new Map<string, LogicalEdge[]>();
-  for (const edge of logicalEdges) {
-    const list = outgoing.get(edge.from);
-    if (list === undefined) outgoing.set(edge.from, [edge]);
-    else list.push(edge);
+  // Node positions come from an in-house Sugiyama-style layered layout: DFS
+  // cycle removal, longest-path layer assignment, dummy insertion for long
+  // edges, and barycenter sweep for crossing minimization. Self-loops don't
+  // affect placement so we strip them, and unknown targets are dropped.
+  const sugiyamaEdges: SugiyamaEdge[] = [];
+  for (const stateType of states) {
+    const stateDesc = description.states[stateType];
+    if (stateDesc === undefined) continue;
+    for (const transition of stateDesc.transitions) {
+      for (const branch of transition.branches) {
+        if (
+          branch.kind === "transition" &&
+          branch.targetStateType !== null &&
+          stateType !== branch.targetStateType
+        ) {
+          sugiyamaEdges.push({
+            from: stateType,
+            to: branch.targetStateType,
+          });
+        }
+      }
+    }
   }
 
-  const ranks = assignRanks(states, outgoing, initialState);
-  const columns = groupByRank(states, ranks);
+  const sugiyamaPositions = computeLayeredLayout(
+    states,
+    sugiyamaEdges,
+    initialState,
+    {
+      direction: "right",
+      layerGap: COLUMN_GAP,
+      nodeGap: ROW_GAP,
+      nodeHeight: NODE_HEIGHT,
+      nodeWidth: NODE_WIDTH,
+    },
+  );
 
   const nodePositions = new Map<
     string,
     { x: number; y: number; width: number; height: number }
   >();
-  columns.forEach((column, rankIndex) => {
-    column.forEach((stateId, rowIndex) => {
-      const x = MARGIN + rankIndex * (NODE_WIDTH + COLUMN_GAP);
-      const y = MARGIN + rowIndex * (NODE_HEIGHT + ROW_GAP);
-      nodePositions.set(stateId, {
-        height: NODE_HEIGHT,
-        width: NODE_WIDTH,
-        x,
-        y,
-      });
+  for (const stateId of states) {
+    const pos = sugiyamaPositions.get(stateId);
+    if (pos === undefined) continue;
+    nodePositions.set(stateId, {
+      height: NODE_HEIGHT,
+      width: NODE_WIDTH,
+      x: MARGIN + pos.x,
+      y: MARGIN + pos.y,
     });
-  });
+  }
 
   // Apply user overrides on top of the computed grid positions.
   for (const [stateId, override] of overrides) {
@@ -83,9 +112,26 @@ export function inspectorLayout(
     .filter((id) => nodePositions.has(id))
     .map((id) => ({ id, ...nodePositions.get(id)! }));
 
-  const routedEdges = logicalEdges
-    .map((edge) => routeEdge(edge, nodePositions))
-    .filter((edge): edge is EdgeRouting => edge !== undefined);
+  // Route edges one at a time and grow a list of already-placed label rects so
+  // each subsequent edge's collision resolution treats prior labels as
+  // obstacles too. This prevents parallel-edge labels (like the traffic
+  // machine's `tick` / `emergency ELSE` / `pedestrian` between `green` and
+  // `yellow`) from stacking on top of each other when the natural fan-out
+  // spacing isn't wide enough for their pill widths.
+  const placedLabelRects: Rect[] = [];
+  const routedEdges: EdgeRouting[] = [];
+  for (const edge of logicalEdges) {
+    const routing = routeEdge(edge, nodePositions, placedLabelRects);
+    if (routing === undefined) continue;
+    routedEdges.push(routing);
+    const layoutEdge = routing.layout;
+    placedLabelRects.push({
+      height: LABEL_HEIGHT,
+      width: layoutEdge.labelWidth,
+      x: layoutEdge.labelX - layoutEdge.labelWidth / 2,
+      y: layoutEdge.labelY - LABEL_HEIGHT / 2,
+    });
+  }
 
   const layoutEdges = routedEdges.map((edge) => edge.layout);
 
@@ -213,65 +259,16 @@ function assignLanes(edges: LogicalEdge[]): void {
   }
 }
 
-function assignRanks(
-  states: string[],
-  outgoing: Map<string, LogicalEdge[]>,
-  initialState: string,
-): Map<string, number> {
-  const ranks = new Map<string, number>();
-  if (states.includes(initialState)) {
-    ranks.set(initialState, 0);
-  }
-
-  const queue: string[] = [initialState];
-  while (queue.length > 0) {
-    const current = queue.shift()!;
-    const currentRank = ranks.get(current);
-    if (currentRank === undefined) continue;
-    for (const edge of outgoing.get(current) ?? []) {
-      if (ranks.has(edge.to)) continue;
-      ranks.set(edge.to, currentRank + 1);
-      queue.push(edge.to);
-    }
-  }
-
-  let orphanRank = 0;
-  for (const rank of ranks.values()) {
-    if (rank > orphanRank) orphanRank = rank;
-  }
-  orphanRank += 1;
-
-  for (const state of states) {
-    if (!ranks.has(state)) {
-      ranks.set(state, orphanRank);
-    }
-  }
-
-  return ranks;
-}
-
-function groupByRank(
-  states: string[],
-  ranks: Map<string, number>,
-): string[][] {
-  const columns: string[][] = [];
-  for (const state of states) {
-    const rank = ranks.get(state);
-    if (rank === undefined) continue;
-    while (columns.length <= rank) columns.push([]);
-    columns[rank]!.push(state);
-  }
-  return columns;
-}
-
 const CORNER_RADIUS = 8;
+/** Vertical spacing between fanned-out labels on a horizontal spine. */
+const LABEL_FAN_SPACING_V = 26;
+/** Horizontal spacing between fanned-out labels on a vertical spine. */
+const LABEL_FAN_SPACING_H = 140;
 
 function routeEdge(
   edge: LogicalEdge,
-  positions: Map<
-    string,
-    { x: number; y: number; width: number; height: number }
-  >,
+  positions: Map<string, Rect>,
+  placedLabelRects: readonly Rect[],
 ): EdgeRouting | undefined {
   const source = positions.get(edge.from);
   const target = positions.get(edge.to);
@@ -283,88 +280,264 @@ function routeEdge(
     return selfLoop(edge, source, labelWidth);
   }
 
-  const lane = laneOffsetFor(edge);
-  const forward = target.x > source.x + source.width;
+  // Pick the routing axis by comparing center-to-center vectors. This gives
+  // the closest-edge dock: if target is mostly to the right, exit right; if
+  // mostly below, exit bottom; etc.
+  const sourceCenterX = source.x + source.width / 2;
+  const sourceCenterY = source.y + source.height / 2;
+  const targetCenterX = target.x + target.width / 2;
+  const targetCenterY = target.y + target.height / 2;
+  const dx = targetCenterX - sourceCenterX;
+  const dy = targetCenterY - sourceCenterY;
 
-  if (forward) {
-    return routeForward(edge, source, target, lane, labelWidth);
+  if (Math.abs(dx) >= Math.abs(dy)) {
+    return routeHorizontal(
+      edge,
+      source,
+      target,
+      dx > 0,
+      labelWidth,
+      positions,
+      placedLabelRects,
+    );
   }
-  return routeBack(edge, source, target, lane, labelWidth);
+  return routeVertical(
+    edge,
+    source,
+    target,
+    dy > 0,
+    labelWidth,
+    positions,
+    placedLabelRects,
+  );
 }
 
-function routeForward(
+function routeHorizontal(
   edge: LogicalEdge,
-  source: { x: number; y: number; width: number; height: number },
-  target: { x: number; y: number; width: number; height: number },
-  lane: number,
+  source: Rect,
+  target: Rect,
+  forward: boolean,
   labelWidth: number,
+  positions: Map<string, Rect>,
+  placedLabelRects: readonly Rect[],
 ): EdgeRouting {
-  const sourceX = source.x + source.width;
-  const sourceY = source.y + source.height / 2 + lane;
-  const targetX = target.x;
-  const targetY = target.y + target.height / 2 + lane;
+  // Docks converge at the middle of the facing edge on each node. Labels are
+  // pass-through pills — the line enters the side facing the source, exits
+  // the opposite side. Parallel-edge labels fan out vertically.
+  const sourceX = forward ? source.x + source.width : source.x;
+  const sourceY = source.y + source.height / 2;
+  const targetX = forward ? target.x : target.x + target.width;
+  const targetY = target.y + target.height / 2;
 
-  let waypoints: Array<{ x: number; y: number }>;
-  let labelX: number;
-  let labelY: number;
+  const naturalLabelX = (sourceX + targetX) / 2;
+  const naturalLabelY = (sourceY + targetY) / 2;
+  const laneOffset =
+    edge.laneTotal <= 1
+      ? 0
+      : (edge.laneIndex - (edge.laneTotal - 1) / 2) * LABEL_FAN_SPACING_V;
+  const resolved = resolveLabelAgainstObstacles(
+    naturalLabelX,
+    naturalLabelY + laneOffset,
+    labelWidth,
+    [...positions.values(), ...placedLabelRects],
+    "vertical", // horizontal flow → escape vertically when a node blocks
+  );
+  const labelX = resolved.labelX;
+  const labelY = resolved.labelY;
+  const labelSourceSideX = forward
+    ? labelX - labelWidth / 2
+    : labelX + labelWidth / 2;
+  const labelTargetSideX = forward
+    ? labelX + labelWidth / 2
+    : labelX - labelWidth / 2;
 
-  if (Math.abs(sourceY - targetY) < 1) {
-    // Straight horizontal — one segment.
-    waypoints = [
-      { x: sourceX, y: sourceY },
-      { x: targetX, y: targetY },
-    ];
-    labelX = (sourceX + targetX) / 2;
-    labelY = sourceY;
-  } else {
-    // Z-shape with two turns. Offset the mid-column X by lane so parallel Zs
-    // don't overlap their vertical segments.
-    const midX = (sourceX + targetX) / 2 + lane;
-    waypoints = [
-      { x: sourceX, y: sourceY },
-      { x: midX, y: sourceY },
-      { x: midX, y: targetY },
-      { x: targetX, y: targetY },
-    ];
-    labelX = midX;
-    labelY = (sourceY + targetY) / 2;
-  }
-
+  const waypoints = simplifyWaypoints([
+    { x: sourceX, y: sourceY },
+    { x: labelSourceSideX, y: sourceY },
+    { x: labelSourceSideX, y: labelY },
+    { x: labelTargetSideX, y: labelY },
+    { x: labelTargetSideX, y: targetY },
+    { x: targetX, y: targetY },
+  ]);
   const path = orthogonalPath(waypoints);
   return buildEdgeRouting(edge, waypoints, path, labelX, labelY, labelWidth);
 }
 
-function routeBack(
+function routeVertical(
   edge: LogicalEdge,
-  source: { x: number; y: number; width: number; height: number },
-  target: { x: number; y: number; width: number; height: number },
-  lane: number,
+  source: Rect,
+  target: Rect,
+  downward: boolean,
   labelWidth: number,
+  positions: Map<string, Rect>,
+  placedLabelRects: readonly Rect[],
 ): EdgeRouting {
-  // Backward edge — U-shape dipping below both nodes. Stack the dip depth by
-  // lane index so parallel back-edges get distinct labels; also fan the
-  // source/target X by the signed lane so the curves themselves don't overlap.
-  const backSourceX = source.x + source.width / 2 + lane * 4;
-  const backTargetX = target.x + target.width / 2 + lane * 4;
-  const backSourceY = source.y + source.height;
-  const backTargetY = target.y + target.height;
-  const dip = Math.max(backSourceY, backTargetY) + 60 + edge.laneIndex * 22;
-  const waypoints = [
-    { x: backSourceX, y: backSourceY },
-    { x: backSourceX, y: dip },
-    { x: backTargetX, y: dip },
-    { x: backTargetX, y: backTargetY },
-  ];
+  const sourceX = source.x + source.width / 2;
+  const sourceY = downward ? source.y + source.height : source.y;
+  const targetX = target.x + target.width / 2;
+  const targetY = downward ? target.y : target.y + target.height;
+
+  const naturalLabelY = (sourceY + targetY) / 2;
+  const naturalLabelX = (sourceX + targetX) / 2;
+  const laneOffset =
+    edge.laneTotal <= 1
+      ? 0
+      : (edge.laneIndex - (edge.laneTotal - 1) / 2) * LABEL_FAN_SPACING_H;
+  const resolved = resolveLabelAgainstObstacles(
+    naturalLabelX + laneOffset,
+    naturalLabelY,
+    labelWidth,
+    [...positions.values(), ...placedLabelRects],
+    "horizontal", // vertical flow → escape horizontally when a node blocks
+  );
+  const labelX = resolved.labelX;
+  const labelY = resolved.labelY;
+  const labelSourceSideY = downward
+    ? labelY - LABEL_HEIGHT / 2
+    : labelY + LABEL_HEIGHT / 2;
+  const labelTargetSideY = downward
+    ? labelY + LABEL_HEIGHT / 2
+    : labelY - LABEL_HEIGHT / 2;
+
+  const waypoints = simplifyWaypoints([
+    { x: sourceX, y: sourceY },
+    { x: sourceX, y: labelSourceSideY },
+    { x: labelX, y: labelSourceSideY },
+    { x: labelX, y: labelTargetSideY },
+    { x: targetX, y: labelTargetSideY },
+    { x: targetX, y: targetY },
+  ]);
   const path = orthogonalPath(waypoints);
-  const labelX = (backSourceX + backTargetX) / 2;
-  const labelY = dip;
   return buildEdgeRouting(edge, waypoints, path, labelX, labelY, labelWidth);
 }
 
-function laneOffsetFor(edge: LogicalEdge): number {
-  if (edge.laneTotal <= 1) return 0;
-  const centered = edge.laneIndex - (edge.laneTotal - 1) / 2;
-  return centered * 22;
+/**
+ * Public helper: given a proposed label center position, shift it out of every
+ * obstacle rect (state boxes, other labels, whatever the caller lists). Used
+ * both by the auto-router (before baking the label into the layout) and by
+ * the interactive drag handler.
+ */
+export function clampLabelOutOfObstacles(
+  labelX: number,
+  labelY: number,
+  labelWidth: number,
+  obstacles: readonly Rect[],
+  preferredAxis: "horizontal" | "vertical" | "shortest" = "vertical",
+): { labelX: number; labelY: number } {
+  return resolveLabelAgainstObstacles(
+    labelX,
+    labelY,
+    labelWidth,
+    obstacles,
+    preferredAxis,
+  );
+}
+
+/**
+ * Public helper: shift a top-left node rect out of every overlapping obstacle
+ * using the shortest escape direction. Used by the node-drag handler to
+ * prevent two state boxes from ever occupying the same space.
+ */
+export function clampNodeOutOfObstacles(
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  obstacles: readonly Rect[],
+): { x: number; y: number } {
+  return pushRectOutOfObstacles({ height, width, x, y }, obstacles, "shortest");
+}
+
+/**
+ * Backward-compat shim for the earlier label-only helper.
+ * @deprecated Use `clampLabelOutOfObstacles`.
+ */
+export function clampLabelOutOfNodes(
+  labelX: number,
+  labelY: number,
+  labelWidth: number,
+  nodes: readonly Rect[],
+): { labelX: number; labelY: number } {
+  return clampLabelOutOfObstacles(labelX, labelY, labelWidth, nodes, "vertical");
+}
+
+function resolveLabelAgainstObstacles(
+  labelX: number,
+  labelY: number,
+  labelWidth: number,
+  obstacles: readonly Rect[],
+  preferredAxis: "horizontal" | "vertical" | "shortest",
+): { labelX: number; labelY: number } {
+  const result = pushRectOutOfObstacles(
+    {
+      height: LABEL_HEIGHT,
+      width: labelWidth,
+      x: labelX - labelWidth / 2,
+      y: labelY - LABEL_HEIGHT / 2,
+    },
+    obstacles,
+    preferredAxis,
+  );
+  return {
+    labelX: result.x + labelWidth / 2,
+    labelY: result.y + LABEL_HEIGHT / 2,
+  };
+}
+
+/**
+ * Iterative "push out" collision resolver. Given a top-left rect and a list of
+ * top-left obstacle rects, shift the rect along the caller's preferred axis
+ * (or the shortest escape direction) until it no longer overlaps any
+ * obstacle. Bounded number of passes since one shift can move the rect into a
+ * different obstacle.
+ */
+function pushRectOutOfObstacles(
+  rect: Rect,
+  obstacles: readonly Rect[],
+  preferredAxis: "horizontal" | "vertical" | "shortest",
+): { x: number; y: number } {
+  const margin = 6;
+  let x = rect.x;
+  let y = rect.y;
+  const w = rect.width;
+  const h = rect.height;
+  for (let iter = 0; iter < 16; iter++) {
+    let overlapped = false;
+    for (const o of obstacles) {
+      const right = x + w;
+      const bottom = y + h;
+      const oRight = o.x + o.width;
+      const oBottom = o.y + o.height;
+      if (right <= o.x || x >= oRight || bottom <= o.y || y >= oBottom) {
+        continue;
+      }
+      overlapped = true;
+      const escapeLeft = right - o.x + margin;
+      const escapeRight = oRight - x + margin;
+      const escapeUp = bottom - o.y + margin;
+      const escapeDown = oBottom - y + margin;
+      if (preferredAxis === "horizontal") {
+        if (escapeLeft <= escapeRight) x -= escapeLeft;
+        else x += escapeRight;
+      } else if (preferredAxis === "vertical") {
+        if (escapeUp <= escapeDown) y -= escapeUp;
+        else y += escapeDown;
+      } else {
+        const minEscape = Math.min(
+          escapeLeft,
+          escapeRight,
+          escapeUp,
+          escapeDown,
+        );
+        if (minEscape === escapeLeft) x -= escapeLeft;
+        else if (minEscape === escapeRight) x += escapeRight;
+        else if (minEscape === escapeUp) y -= escapeUp;
+        else y += escapeDown;
+      }
+    }
+    if (!overlapped) break;
+  }
+  return { x, y };
 }
 
 function selfLoop(
@@ -425,6 +598,36 @@ function buildEdgeRouting(
     minY: Math.min(minY, labelY - LABEL_HEIGHT / 2),
   };
   return { bounds, layout };
+}
+
+/**
+ * Collapse duplicate and collinear consecutive waypoints so a naive stair like
+ * `[A, (mid, A.y), (mid, A.y), B]` becomes `[A, B]` when segments are trivial.
+ * Keeps interior corners intact when they actually change direction.
+ */
+export function simplifyWaypoints(
+  points: Array<{ x: number; y: number }>,
+): Array<{ x: number; y: number }> {
+  const kept: Array<{ x: number; y: number }> = [];
+  for (const point of points) {
+    if (kept.length === 0) {
+      kept.push(point);
+      continue;
+    }
+    const last = kept[kept.length - 1]!;
+    if (last.x === point.x && last.y === point.y) continue;
+    if (kept.length >= 2) {
+      const prev = kept[kept.length - 2]!;
+      const sameX = prev.x === last.x && last.x === point.x;
+      const sameY = prev.y === last.y && last.y === point.y;
+      if (sameX || sameY) {
+        kept[kept.length - 1] = point;
+        continue;
+      }
+    }
+    kept.push(point);
+  }
+  return kept;
 }
 
 /**
